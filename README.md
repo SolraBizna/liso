@@ -5,6 +5,8 @@ It should work anywhere [Crossterm](https://crates.io/crates/crossterm) does:
 - Windows 7 or later
 - On UNIX, any system with an ANSI-compatible terminal
 
+**NOTE: WORK IN PROGRESS!** Not release ready!
+
 # Line Editing Bindings
 
 Liso provides line editing based on a commonly-used subset of the default GNU Readline bindings:
