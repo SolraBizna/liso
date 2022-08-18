@@ -151,11 +151,14 @@ impl TtyState {
         }
     }
     fn reconcile_cursors(&self, term: &mut RefMut<'_, Box<dyn Term>>,
+                         term_width: u32,
                          real_column: &mut u32,
                          real_breaks: &mut u32,
-                         cur_column: u32,
+                         mut cur_column: u32,
                          cur_breaks: u32)
     -> LifeOrDeath {
+        if cur_column >= term_width { cur_column = term_width-1; }
+        if *real_column >= term_width { *real_column = term_width-1; }
         if *real_breaks != cur_breaks {
             if *real_breaks < cur_breaks {
                 term.move_cursor_down(cur_breaks - *real_breaks)?;
@@ -283,7 +286,7 @@ impl TtyState {
                         continue;
                     }
                     // we have a difference! Let the real cursor catch up
-                    self.reconcile_cursors(&mut term,
+                    self.reconcile_cursors(&mut term, term_width,
                                            &mut real_column,
                                            &mut real_breaks,
                                            cur_column, cur_breaks)?;
@@ -302,7 +305,7 @@ impl TtyState {
                     self.maybe_report(b.index, cur_column, cur_breaks,
                         cursor_pos, &mut output_cursor_left,
                         &mut output_cursor_top, term_width);
-                    self.reconcile_cursors(&mut term,
+                    self.reconcile_cursors(&mut term, term_width,
                                            &mut real_column,
                                            &mut real_breaks,
                                            cur_column, cur_breaks)?;
@@ -315,7 +318,7 @@ impl TtyState {
                 },
                 (a, None) => {
                     if a.is_some() {
-                        self.reconcile_cursors(&mut term,
+                        self.reconcile_cursors(&mut term, term_width,
                                                &mut real_column,
                                                &mut real_breaks,
                                                cur_column, cur_breaks)?;
@@ -332,7 +335,7 @@ impl TtyState {
             self.maybe_report(b.index, cur_column, cur_breaks,
                 cursor_pos, &mut output_cursor_left,
                 &mut output_cursor_top, term_width);
-            self.reconcile_cursors(&mut term,
+            self.reconcile_cursors(&mut term, term_width,
                                     &mut real_column,
                                     &mut real_breaks,
                                     cur_column, cur_breaks)?;
@@ -353,7 +356,7 @@ impl TtyState {
             };
             if trailit {
                 if cur_column < term_width {
-                    self.reconcile_cursors(&mut term,
+                    self.reconcile_cursors(&mut term, term_width,
                                             &mut real_column,
                                             &mut real_breaks,
                                             cur_column, cur_breaks)?;
@@ -374,7 +377,7 @@ impl TtyState {
         }
         let cursor_left = output_cursor_left.unwrap_or(cur_column);
         let cursor_top = output_cursor_top.unwrap_or(cur_breaks);
-        self.reconcile_cursors(&mut term, &mut real_column, &mut real_breaks,
+        self.reconcile_cursors(&mut term, term_width, &mut real_column, &mut real_breaks,
                                cursor_left, cursor_top)?;
         if cursor_top > cur_breaks {
             // this should only happen if the cursor went to the next line, but
@@ -900,6 +903,7 @@ impl TtyState {
             cursor_pos = Some(self.input_cursor + new_output.len());
             new_output.add_text(&self.input);
         }
+        self.term.borrow_mut().hide_cursor()?;
         self.output_line_changes(&new_output,
             cursor_pos, false, true)?;
         let mut term = self.term.borrow_mut();
