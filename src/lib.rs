@@ -408,6 +408,32 @@ impl Line {
         });
         self
     }
+    /// Returns true if this line contains no text.
+    pub fn is_empty(&self) -> bool { self.text.is_empty() }
+    /// Returns the number of **BYTES** of text this line contains.
+    pub fn len(&self) -> usize { self.text.len() }
+    /// Iterate over chars of the line, including style information, one char
+    /// at a time.
+    ///
+    /// Yields: `(byte_index, character, style, fgcolor, bgcolor)`
+    pub fn chars(&self) -> LineCharIterator<'_> {
+        LineCharIterator::new(self)
+    }
+    /// Add a linebreak and clear style and color.
+    pub fn clear_and_break(&mut self) {
+        self.add_text("\n");
+        self.set_style(Style::empty());
+        self.set_colors(None, None);
+    }
+    /// Append another Line to ourselves, including style information. You may
+    /// want to `clear_and_break first.
+    pub fn append_line(&mut self, other: &Line) {
+        for element in other.elements.iter() {
+            self.set_style(element.style);
+            self.set_colors(element.fg, element.bg);
+            self.add_text(&other.text[element.start .. element.end]);
+        }
+    }
 }
 
 impl Into<Line> for String {
@@ -668,6 +694,104 @@ impl IO {
             Err(TryRecvError::Disconnected) => Some(Response::Dead),
             Err(TryRecvError::Empty) => None,
         }
+    }
+}
+
+pub struct LineCharIterator<'a> {
+    line: &'a Line,
+    cur_element: usize,
+    indices: std::str::CharIndices<'a>,
+}
+
+/// A char from a `Line`, with associated style and index information.
+#[derive(Clone,Copy,Debug)]
+pub struct LineChar {
+    /// Byte index within the `Line` of this char.
+    pub index: usize,
+    /// The actual char.
+    pub ch: char,
+    /// Style (bold, inverse, etc.)
+    pub style: Style,
+    /// Foreground color
+    pub fg: Option<Color>,
+    /// Background color
+    pub bg: Option<Color>,
+}
+
+impl PartialEq for LineChar {
+    fn eq(&self, other: &LineChar) -> bool {
+        self.ch == other.ch && self.style == other.style && self.fg == other.fg
+            && self.bg == other.bg
+    }
+}
+
+impl LineChar {
+    /// Returns true if it is definitely impossible to distinguish spaces
+    /// printed in the style of both LineChars, false if it might be possible
+    /// to distinguish them. Used to optimize endfill when overwriting one line
+    /// with another.
+    ///
+    /// In cases whether the answer depends on the specific terminal, returns
+    /// false. One example is going from inverse video with a foreground color
+    /// to non-inverse video with the corresponding background color. (Some
+    /// terminals will display the same color differently depending on whether
+    /// it's foreground or background, and some of those terminals implement
+    /// inverse by simply swapping foreground and background, therefore we
+    /// can't count on them looking the same just because the color index is
+    /// the same.)
+    pub fn endfills_same_as(&self, other: &LineChar) -> bool {
+        let a_underline = self.style.contains(Style::UNDERLINE);
+        let b_underline = other.style.contains(Style::UNDERLINE);
+        if a_underline != b_underline { return false }
+        debug_assert_eq!(a_underline, b_underline);
+        let a_inverse = self.style.contains(Style::INVERSE);
+        let b_inverse = other.style.contains(Style::INVERSE);
+        if a_inverse != b_inverse { false }
+        else if a_inverse {
+            debug_assert!(b_inverse);
+            if a_underline && self.bg != other.bg { return false }
+            self.fg == other.fg
+        }
+        else {
+            debug_assert!(!a_inverse);
+            debug_assert!(!b_inverse);
+            if a_underline && self.fg != other.fg { return false }
+            self.bg == other.bg
+        }
+    }
+}
+
+impl<'a> LineCharIterator<'a> {
+    fn new(line: &'a Line) -> LineCharIterator<'a> {
+        LineCharIterator {
+            line,
+            cur_element: 0,
+            indices: line.text.char_indices(),
+        }
+    }
+}
+
+impl Iterator for LineCharIterator<'_> {
+    type Item = LineChar;
+    fn next(&mut self) -> Option<LineChar> {
+        let (index, ch) = match self.indices.next() {
+            Some(x) => x,
+            None => return None,
+        };
+        while self.cur_element < self.line.elements.len()
+        && self.line.elements[self.cur_element].end <= index {
+            self.cur_element += 1;
+        }
+        // We should never end up with text in the text string that is not
+        // covered by an element.
+        debug_assert!(self.cur_element < self.line.elements.len());
+        let element = &self.line.elements[self.cur_element];
+        Some(LineChar {
+            index, ch,
+            style: element.style,
+            fg: element.fg,
+            bg: element.bg,
+        })
     }
 }
 

@@ -316,6 +316,10 @@ impl Term for Crossterminal {
         queue!(self.stdout, style::Print(text))?;
         Ok(())
     }
+    fn print_char(&mut self, ch: char) -> LifeOrDeath {
+        queue!(self.stdout, style::Print(ch))?;
+        Ok(())
+    }
     fn print_spaces(&mut self, spaces: usize) -> LifeOrDeath {
         for _ in 0 .. spaces {
             queue!(self.stdout, style::Print(" "))?;
@@ -324,6 +328,10 @@ impl Term for Crossterminal {
     }
     fn move_cursor_up(&mut self, amt: u32) -> LifeOrDeath {
         queue!(self.stdout, cursor::MoveUp(amt as u16))?;
+        Ok(())
+    }
+    fn move_cursor_down(&mut self, amt: u32) -> LifeOrDeath {
+        queue!(self.stdout, cursor::MoveDown(amt as u16))?;
         Ok(())
     }
     fn move_cursor_left(&mut self, amt: u32) -> LifeOrDeath {
@@ -353,7 +361,7 @@ impl Term for Crossterminal {
         queue!(self.stdout,
                style::SetAttribute(CtAttribute::Reset),
                terminal::Clear(terminal::ClearType::All),
-               cursor::MoveTo(1, 1))?;
+               cursor::MoveTo(0, 0))?;
         self.cur_style = Style::PLAIN;
         self.cur_fg = None;
         self.cur_bg = None;
@@ -366,6 +374,11 @@ impl Term for Crossterminal {
         self.cur_style = Style::PLAIN;
         self.cur_fg = None;
         self.cur_bg = None;
+        Ok(())
+    }
+    fn clear_to_end_of_line(&mut self) -> LifeOrDeath {
+        queue!(self.stdout,
+               terminal::Clear(terminal::ClearType::UntilNewLine))?;
         Ok(())
     }
     fn hide_cursor(&mut self) -> LifeOrDeath {

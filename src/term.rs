@@ -20,8 +20,10 @@ pub(crate) trait Term {
                  fg: Option<Color>, bg: Option<Color>) -> LifeOrDeath;
     fn reset_attrs(&mut self) -> LifeOrDeath;
     fn print(&mut self, text: &str) -> LifeOrDeath;
+    fn print_char(&mut self, char: char) -> LifeOrDeath;
     fn print_spaces(&mut self, spaces: usize) -> LifeOrDeath;
     fn move_cursor_up(&mut self, amt: u32) -> LifeOrDeath;
+    fn move_cursor_down(&mut self, amt: u32) -> LifeOrDeath;
     fn move_cursor_left(&mut self, amt: u32) -> LifeOrDeath;
     fn move_cursor_right(&mut self, amt: u32) -> LifeOrDeath;
     fn newline(&mut self) -> LifeOrDeath;
@@ -29,6 +31,7 @@ pub(crate) trait Term {
     fn bell(&mut self) -> LifeOrDeath;
     fn clear_all_and_reset(&mut self) -> LifeOrDeath;
     fn clear_forward_and_reset(&mut self) -> LifeOrDeath;
+    fn clear_to_end_of_line(&mut self) -> LifeOrDeath;
     fn hide_cursor(&mut self) -> LifeOrDeath;
     fn show_cursor(&mut self) -> LifeOrDeath;
     fn get_width(&mut self) -> u32;

@@ -259,6 +259,15 @@ impl Term for Vt52 {
         }
         Ok(())
     }
+    fn print_char(&mut self, ch: char) -> LifeOrDeath {
+        if ch >= '\u{0080}' {
+            self.stdout.write_all(b"\x7F")?;
+        }
+        else {
+            self.stdout.write_all(&[ch as u8])?;
+        }
+        Ok(())
+    }
     fn print_spaces(&mut self, spaces: usize) -> LifeOrDeath {
         for _ in 0 .. spaces {
             write!(self.stdout, " ")?;
@@ -268,6 +277,12 @@ impl Term for Vt52 {
     fn move_cursor_up(&mut self, amt: u32) -> LifeOrDeath {
         for _ in 0 .. amt {
             write!(self.stdout, "\x1BA")?;
+        }
+        Ok(())
+    }
+    fn move_cursor_down(&mut self, amt: u32) -> LifeOrDeath {
+        for _ in 0 .. amt {
+            write!(self.stdout, "\x1BB")?;
         }
         Ok(())
     }
@@ -310,6 +325,10 @@ impl Term for Vt52 {
             self.cur_bg = 0;
         }
         self.cur_style = Style::PLAIN;
+        Ok(())
+    }
+    fn clear_to_end_of_line(&mut self) -> LifeOrDeath {
+        write!(self.stdout, "\x1BK")?;
         Ok(())
     }
     fn clear_forward_and_reset(&mut self) -> LifeOrDeath {

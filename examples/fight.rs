@@ -93,7 +93,40 @@ impl Fight {
                         self.mon_attack();
                     }
                     else if wat == "p" || wat == "potion" {
-                        todo!()
+                        if self.upot == 0 {
+                            self.io.println("You are out of potions.");
+                        }
+                        else {
+                            self.upot -= 1;
+                            let new_hp = (self.uhp + PLAYER_POTION_HEAL).min(PLAYER_MAX_HP);
+                            let amount_healed = new_hp.saturating_sub(self.uhp);
+                            if amount_healed == 0 {
+                                let mut line = Line::new();
+                                line.add_text("You drink one of your potions, ");
+                                line.set_style(Style::BOLD);
+                                line.set_fg_color(Some(Color::Red));
+                                line.add_text("wasting the whole thing!");
+                                self.io.println(line);
+                            }
+                            else {
+                                let mut line = Line::new();
+                                line.add_text("You drink one of your potions, healing away ");
+                                line.set_style(Style::BOLD);
+                                if amount_healed < PLAYER_POTION_HEAL {
+                                    line.set_fg_color(Some(Color::Yellow));
+                                }
+                                line.add_text(format!("{}", amount_healed));
+                                line.clear_style();
+                                line.set_fg_color(None);
+                                line.add_text(" damage.");
+                                self.io.println(line);
+                                if amount_healed < PLAYER_POTION_HEAL {
+                                    self.io.println("Some of that potion was wasted!");
+                                }
+                                self.uhp = new_hp;
+                            }
+                            self.mon_attack();
+                        }
                     }
                     else {
                         self.io.println("Your choices are 'attack' or \

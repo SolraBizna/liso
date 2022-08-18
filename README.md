@@ -31,14 +31,15 @@ More bindings may be added in the future.
 
 # TODO
 
+- `Liso::read_timeout`
 - `Line::add_ansi`
 - `Line::as_str` (no styling info)
+- `Line` constructors that take style and/or color as well as text
 - Control-S/-Q on input
 - Squelch output feature (with mandatory status line, related to above)
 - Control-G on input
 - History
 - Tab completion
-- "Rollup optimization"
 - Windows testing
 - Document all the things
 - Move all the channels into TtyState
