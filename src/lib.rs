@@ -434,6 +434,76 @@ impl Line {
             self.add_text(&other.text[element.start .. element.end]);
         }
     }
+    /// Insert linebreaks to wrap to the given number of columns. Only
+    /// available with the "wrap" feature, which is enabled by default.
+    #[cfg(feature="wrap")]
+    pub fn wrap_to_width(&mut self, width: usize) {
+        assert!(width > 0);
+        let wrap_vec = textwrap::wrap(&self.text, width);
+        let mut edit_vec = Vec::with_capacity(wrap_vec.len());
+        let mut cur_end = 0;
+        for el in wrap_vec.into_iter() {
+            // We're pretty sure we didn't use any features that would require
+            // an owned Cow. In fact, if we're wrong, the whole feature won't
+            // work.
+            let slice = match el {
+                Cow::Borrowed(x) => x,
+                Cow::Owned(_)
+                => panic!("We needed textwrap to do borrows only!"),
+            };
+            let (start, end) = convert_subset_slice_to_range(&self.text,slice);
+            debug_assert!(start <= end);
+            if start == end { continue }
+            assert!(start >= cur_end);
+            if start != 0 {
+                edit_vec.push(cur_end..start);
+            }
+            cur_end = end;
+        }
+        for range in edit_vec.into_iter().rev() {
+            self.erase_and_insert_newline(range);
+        }
+    }
+    // Internal use only.
+    #[cfg(feature="wrap")]
+    fn erase_and_insert_newline(&mut self, range: std::ops::Range<usize>) {
+        let delta_bytes = range.end as isize - range.start as isize - 1;
+        self.text.replace_range(range.clone(), "\n");
+        let mut elements_len = self.elements.len();
+        let mut i = self.elements.len();
+        loop {
+            if i == 0 { break }
+            i -= 1;
+            let element = &mut self.elements[i];
+            if element.end > range.end {
+                element.end = ((element.end as isize) + delta_bytes) as usize;
+            }
+            else if element.end > range.start {
+                element.end = range.start;
+            }
+            if element.start > range.end {
+                element.start = ((element.start as isize) + delta_bytes) as usize;
+            }
+            else if element.start > range.start {
+                element.start = range.start;
+            }
+            if element.end <= element.start {
+                if i == elements_len-1 {
+                    // preserve the last element, even if empty
+                    element.end = element.start;
+                }
+                else {
+                    drop(element);
+                    self.elements.remove(i);
+                    elements_len -= 1;
+                    continue;
+                }
+            }
+            if element.start >= range.start {
+                break; // all subsequent elements will be before the edit
+            }
+        }
+    }
 }
 
 impl Into<Line> for String {
@@ -452,6 +522,9 @@ impl Into<Line> for Cow<'_, str> {
 enum Request {
     /// Sent by `println`
     Output(Line),
+    /// Sent by `wrapln`
+    #[cfg(feature="wrap")]
+    OutputWrapped(Line),
     /// Sent by `status`
     Status(Option<Line>),
     /// Sent by `notice`
@@ -564,6 +637,13 @@ impl Sender {
     pub fn println<T>(&self, line: T)
     where T: Into<Line> {
         let _ = self.tx.send(Request::Output(line.into()));
+    }
+    /// Prints a (possibly styled) line of regular output to the screen,
+    /// wrapping it to the width of the terminal. Only available with the
+    /// "wrap" feature, which is enabled by default.
+    pub fn wrapln<T>(&self, line: T)
+    where T: Into<Line> {
+        let _ = self.tx.send(Request::OutputWrapped(line.into()));
     }
     /// Sets the status line to the given (possibly styled) text.
     pub fn status<T>(&self, line: Option<T>)
@@ -795,6 +875,17 @@ impl Iterator for LineCharIterator<'_> {
     }
 }
 
+#[cfg(feature="wrap")]
+fn convert_subset_slice_to_range(outer: &str, inner: &str) -> (usize, usize) {
+    let outer_start = outer.as_ptr() as usize;
+    let outer_end = outer_start.checked_add(outer.len()).unwrap();
+    let inner_start = inner.as_ptr() as usize;
+    let inner_end = inner_start.checked_add(inner.len()).unwrap();
+    assert!(inner_start >= outer_start);
+    assert!(inner_end <= outer_end);
+    (inner_start - outer_start, inner_end - outer_start)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -810,5 +901,17 @@ mod tests {
         assert_eq!(line.elements[0].style, Style::PLAIN);
         assert_eq!(line.elements[1].style, Style::INVERSE);
         assert_eq!(line.elements[2].style, Style::PLAIN);
+    }
+    #[test] #[cfg(feature="wrap")]
+    fn line_wrap_splat() {
+        for n in 1 .. 200 {
+            let mut line = Line::new();
+            line.add_text("This is ");
+            line.set_style(Style::BOLD);
+            line.add_text("a test");
+            line.set_style(Style::empty());
+            line.add_text(" of line wrapping?");
+            line.wrap_to_width(n);
+        }
     }
 }

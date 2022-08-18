@@ -23,8 +23,8 @@ impl Fight {
         let io = IO::new();
         let mut line = Line::new();
         line.set_style(Style::BOLD).add_text("Welcome to Fight!");
-        io.println(line);
-        io.println("Your goal in life is to defeat this evil monster, before \
+        io.wrapln(line);
+        io.wrapln("Your goal in life is to defeat this evil monster, before \
                       they can defeat you!");
         let mut fight = Fight {
             io,
@@ -80,7 +80,7 @@ impl Fight {
                     line.add_text("> ");
                     line.set_fg_color(None);
                     line.add_text(&wat);
-                    self.io.println(line);
+                    self.io.wrapln(line);
                     if wat == "a" || wat == "attack" {
                         self.mhp -= PLAYER_ATTACK_DAMAGE;
                         let mut line = Line::new();
@@ -89,12 +89,12 @@ impl Fight {
                         line.add_text(format!("{}", PLAYER_ATTACK_DAMAGE));
                         line.clear_style();
                         line.add_text(" damage.");
-                        self.io.println(line);
+                        self.io.wrapln(line);
                         self.mon_attack();
                     }
                     else if wat == "p" || wat == "potion" {
                         if self.upot == 0 {
-                            self.io.println("You are out of potions.");
+                            self.io.wrapln("You are out of potions.");
                         }
                         else {
                             self.upot -= 1;
@@ -106,7 +106,7 @@ impl Fight {
                                 line.set_style(Style::BOLD);
                                 line.set_fg_color(Some(Color::Red));
                                 line.add_text("wasting the whole thing!");
-                                self.io.println(line);
+                                self.io.wrapln(line);
                             }
                             else {
                                 let mut line = Line::new();
@@ -119,9 +119,9 @@ impl Fight {
                                 line.clear_style();
                                 line.set_fg_color(None);
                                 line.add_text(" damage.");
-                                self.io.println(line);
+                                self.io.wrapln(line);
                                 if amount_healed < PLAYER_POTION_HEAL {
-                                    self.io.println("Some of that potion was wasted!");
+                                    self.io.wrapln("Some of that potion was wasted!");
                                 }
                                 self.uhp = new_hp;
                             }
@@ -129,7 +129,7 @@ impl Fight {
                         }
                     }
                     else {
-                        self.io.println("Your choices are 'attack' or \
+                        self.io.wrapln("Your choices are 'attack' or \
                                           'potion'.");
                     }
                 },
@@ -141,10 +141,10 @@ impl Fight {
             }
         }
         if self.uhp <= 0 {
-            self.io.println("You lose!");
+            self.io.wrapln("You lose!");
         }
         else if self.mhp <= 0 {
-            self.io.println("You win!");
+            self.io.wrapln("You win!");
         }
     }
     fn mon_attack(&mut self) {
@@ -155,11 +155,14 @@ impl Fight {
         line.add_text(format!("{}", MONSTER_ATTACK_DAMAGE));
         line.clear_style();
         line.add_text(" damage.");
-        self.io.println(line);
+        self.io.wrapln(line);
     }
 }
 
 fn main() {
     Fight::play();
+    // We can use println here. If we've reached the end of `Fight::play()`,
+    // then Liso has cleaned up after itself, and normal terminal output is
+    // possible.
     println!("Bye bye!");
 }

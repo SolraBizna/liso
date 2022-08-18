@@ -402,6 +402,13 @@ impl TtyState {
                 self.output_line(&line)?;
                 self.term.borrow_mut().reset_attrs()?;
             },
+            #[cfg(feature="wrap")]
+            Request::OutputWrapped(mut line) => {
+                self.rollin()?;
+                line.wrap_to_width(self.term.borrow_mut().get_width() as usize);
+                self.output_line(&line)?;
+                self.term.borrow_mut().reset_attrs()?;
+            },
             Request::Status(line) => {
                 if self.status != line {
                     self.rollout_needed = true;
