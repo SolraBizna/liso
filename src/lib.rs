@@ -23,7 +23,8 @@ use term::*;
 ///
 /// This is fairly long to ensure that, even on a 300 baud modem, we would
 /// *definitely* have received another character in the sequence before this
-/// deadline elapses.
+/// deadline elapses. (I say that it's fairly long, but curses waits an entire
+/// **second**, which is much, much, much too long!)
 ///
 /// If Crossterm input is being used, this is ignored.
 const ESCAPE_DELAY: Duration = Duration::new(0, 1000000000 / 24);
@@ -56,12 +57,12 @@ impl From<std_mpsc::RecvTimeoutError> for DummyError {
 }
 
 /// Colors we support outputting. For compatibility, we only support the 3-bit
-/// ANSI colors.
+/// ANSI colors. Use color sparingly.
 ///
 /// Remember that some terminals don't support color at all, and that some
 /// users will be using a different theme from you (white on black, black on
-/// white, green on black, yellow on orange, solarized...). Use color
-/// sparingly.
+/// white, green on black, yellow on orange, solarized, something else with
+/// scrambled/shuffled colors...).
 #[derive(Clone,Copy,Debug,Eq,PartialEq)]
 #[repr(u8)]
 pub enum Color {
@@ -174,19 +175,25 @@ pub struct Sender {
 }
 
 /// Receives input from the terminal. Only one thread can have this privilege
-/// at a time. Acts as a [`Sender`](struct.Sender.html) for sending output to
-/// the terminal. Use `clone_sender` to branch additional `Sender`s off for use
-/// in other threads.
+/// at a time. Also acts as a [`Sender`](struct.Sender.html) for sending output
+/// to the terminal. Use `clone_sender` to branch additional `Sender`s off for
+/// use threads other than the one receiving input.
 pub struct IO {
     sender: Sender,
     rx: tokio_mpsc::UnboundedReceiver<Response>,
 }
 
+/// An individual styled span within a line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LineElement {
+    /// The style in effect.
     style: Style,
+    /// The foreground color (if any).
     fg: Option<Color>,
+    /// The background color (if any).
     bg: Option<Color>,
+    /// The start (inclusive) and end (exclusive) range of text within the
+    /// parent `Line` to which these attributes apply.
     start: usize, end: usize,
 }
 
