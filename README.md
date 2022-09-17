@@ -3,7 +3,8 @@ Liso (LEE-soh) is an acronym for Line Input with Simultaneous Output. It is a li
 It should work anywhere [Crossterm](https://crates.io/crates/crossterm) does:
 
 - Windows 7 or later
-- On UNIX, any system with an ANSI-compatible terminal
+- On UNIX, any system with an ANSI-compatible terminal (via crossterm) or a
+  VT52-compatible terminal (via custom support).
 
 **NOTE: WORK IN PROGRESS!** Not release ready!
 
@@ -31,6 +32,7 @@ More bindings may be added in the future.
 
 # TODO
 
+- "enforced" EOF handling
 - `Liso::read_timeout`
 - `Line::add_ansi`
 - `Line::as_str` (no styling info)

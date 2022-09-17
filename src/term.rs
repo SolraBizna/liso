@@ -16,6 +16,9 @@ use vt52::Vt52;
 /// are set appropriately, we might use one of the other variants.
 
 pub(crate) trait Term {
+    /// Set the current attributes. (If possible, defer the actual control
+    /// code outputting until the next time one of the `print_*` functions is
+    /// called.)
     fn set_attrs(&mut self, style: Style,
                  fg: Option<Color>, bg: Option<Color>) -> LifeOrDeath;
     fn reset_attrs(&mut self) -> LifeOrDeath;

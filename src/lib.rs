@@ -62,7 +62,9 @@ impl From<std_mpsc::RecvTimeoutError> for DummyError {
 /// Remember that some terminals don't support color at all, and that some
 /// users will be using a different theme from you (white on black, black on
 /// white, green on black, yellow on orange, solarized, something else with
-/// scrambled/shuffled colors...).
+/// scrambled/shuffled colors...), and some users will have some form of
+/// colorblindness. Never use color as the *only* source of particular
+/// information.
 #[derive(Clone,Copy,Debug,Eq,PartialEq)]
 #[repr(u8)]
 pub enum Color {
@@ -140,6 +142,7 @@ bitflags! {
     /// interpretation.
     #[derive(Default)]
     pub struct Style: u32 {
+        /// No styling at all. (A nice alias for `Style::empty()`.)
         const PLAIN = 0;
         /// Prints in a bolder font and/or a brighter color.
         const BOLD = 1 << 0;
@@ -150,7 +153,12 @@ bitflags! {
         /// Prints with the foreground and background colors reversed. (Some
         /// terminals that don't support color do support this.)
         ///
-        /// Liso toggles this whenever it's outputting a control sequence.
+        /// Liso toggles this whenever it's outputting a control sequence:
+        ///
+        /// ```rust
+        /// # use liso::liso;
+        /// assert_eq!(liso!("Type \x03 to quit."),
+        ///            liso!("Type ", ^inverse, "^C", ^inverse, " to quit."));
         const INVERSE = 1 << 3;
     }
 }
@@ -174,10 +182,11 @@ pub struct Sender {
     tx: std_mpsc::Sender<Request>,
 }
 
-/// Receives input from the terminal. Only one thread can have this privilege
-/// at a time. Also acts as a [`Sender`](struct.Sender.html) for sending output
-/// to the terminal. Use `clone_sender` to branch additional `Sender`s off for
-/// use threads other than the one receiving input.
+/// Receives input from, and sends output to, the terminal. You can *send
+/// output* from any number of threads
+/// (see [`IO::clone_sender`](struct.IO.html#method.clone_sender)), but only
+/// one thread at a time may have ownership of the overlying `IO` type and
+/// therefore the ability to *receive input*.
 pub struct IO {
     sender: Sender,
     rx: tokio_mpsc::UnboundedReceiver<Response>,
@@ -198,7 +207,8 @@ struct LineElement {
 }
 
 /// This is a line of text, with optional styling information, ready for
-/// display.
+/// display. The [`liso!` macro](macro.liso.html) is extremely convenient for
+/// building these.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Line {
     text: String,
@@ -272,7 +282,7 @@ impl Line {
         if i.len() == 0 { return self }
         // we regard as a control character anything in the C0 and C1 control
         // character blocks, as well as the U+2028 LINE SEPARATOR and
-        // U+2029 PARAGRAPH SEPARATOR characters. Except newline!
+        // U+2029 PARAGRAPH SEPARATOR characters. Except newliso!
         let mut control_iterator = i.match_indices(|x: char|
                                                    (x.is_control()
                                                     && x != '\n')
@@ -415,6 +425,11 @@ impl Line {
         });
         self
     }
+    /// Reset ALL style and color information to default. Equivalent to calling
+    /// `set_style(Style::PLAIN)` followed by `set_colors(None, None)`.
+    pub fn reset_all(&mut self) -> &mut Line {
+        self.set_style(Style::PLAIN).set_colors(None, None)
+    }
     /// Returns true if this line contains no text.
     pub fn is_empty(&self) -> bool { self.text.is_empty() }
     /// Returns the number of **BYTES** of text this line contains.
@@ -426,14 +441,14 @@ impl Line {
     pub fn chars(&self) -> LineCharIterator<'_> {
         LineCharIterator::new(self)
     }
-    /// Add a linebreak and clear style and color.
-    pub fn clear_and_break(&mut self) {
+    /// Add a linebreak and then clear style and color.
+    pub fn reset_and_break(&mut self) {
         self.add_text("\n");
         self.set_style(Style::empty());
         self.set_colors(None, None);
     }
     /// Append another Line to ourselves, including style information. You may
-    /// want to `clear_and_break first.
+    /// want to `reset_and_break` first.
     pub fn append_line(&mut self, other: &Line) {
         for element in other.elements.iter() {
             self.set_style(element.style);
@@ -784,13 +799,18 @@ impl IO {
     }
 }
 
+/// Allows you to iterate over the characters in a [`Line`](struct.Line.html),
+/// one at a time, along with their style information. This is returned by
+/// [`Line::chars()`](struct.Line.html#method.chars).
 pub struct LineCharIterator<'a> {
     line: &'a Line,
     cur_element: usize,
     indices: std::str::CharIndices<'a>,
 }
 
-/// A char from a `Line`, with associated style and index information.
+/// A single character from a `Line`, along with its associated style and index
+/// information. This is returned by
+/// [`LineCharIterator`](struct.LineCharIterator.html).
 #[derive(Clone,Copy,Debug)]
 pub struct LineChar {
     /// Byte index within the `Line` of this char.
@@ -893,6 +913,241 @@ fn convert_subset_slice_to_range(outer: &str, inner: &str) -> (usize, usize) {
     (inner_start - outer_start, inner_end - outer_start)
 }
 
+/// Produce an `Option<Color>` from a name or expression. For internal use by
+/// the [`liso!`](macro.liso.html) and [`liso_add!`](macro.liso_add.html)
+/// macros.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! color {
+    (Black) => (Some($crate::Color::Black));
+    (Red) => (Some($crate::Color::Red));
+    (Green) => (Some($crate::Color::Green));
+    (Yellow) => (Some($crate::Color::Yellow));
+    (Blue) => (Some($crate::Color::Blue));
+    (Cyan) => (Some($crate::Color::Cyan));
+    (Magenta) => (Some($crate::Color::Magenta));
+    (White) => (Some($crate::Color::White));
+    (none) => (None);
+    (black) => (Some($crate::Color::Black));
+    (red) => (Some($crate::Color::Red));
+    (green) => (Some($crate::Color::Green));
+    (yellow) => (Some($crate::Color::Yellow));
+    (blue) => (Some($crate::Color::Blue));
+    (cyan) => (Some($crate::Color::Cyan));
+    (magenta) => (Some($crate::Color::Magenta));
+    (white) => (Some($crate::Color::White));
+    (none) => (None);
+    ($other:expr) => ($other);
+}
+
+/// Add some pieces to a [`Line`](struct.Line.html). More convenient than
+/// calling its methods.
+///
+/// ```rust
+/// # use liso::{liso_add, Line, Style};
+/// let mut line_a = Line::new();
+/// line_a.add_text("Hello ");
+/// line_a.set_style(Style::BOLD);
+/// line_a.add_text("World!");
+/// let mut line_b = Line::new();
+/// liso_add!(line_b, "Hello ", bold, "World!");
+/// assert_eq!(line_a, line_b);
+/// ```
+///
+/// Use the [`liso!` macro](macro.liso.html) to build an entire line in a
+/// single go. See that macro's documentation for more information on the
+/// syntax.
+#[macro_export]
+macro_rules! liso_add {
+    // Reset all style and color
+    // `reset`
+    ($line:ident, reset, $($rest:tt)*) => {
+        $line.reset_all();
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, reset) => {
+        $line.reset_all();
+    };
+    // Set fg/bg color
+    // (`fg` | `bg`) `=` <COLOR>
+    ($line:ident, fg = $color:tt, $($rest:tt)*) => {
+        $line.set_fg_color($crate::color!($color));
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, fg = $color:tt) => {
+        $line.set_fg_color($crate::color!($color));
+    };
+    ($line:ident, bg = $color:tt, $($rest:tt)*) => {
+        $line.set_bg_color($crate::color!($color));
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, bg = $color:tt) => {
+        $line.set_bg_color($crate::color!($color));
+    };
+    ($line:ident, fg = $color:expr, $($rest:tt)*) => {
+        $line.set_fg_color($color);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, fg = $color:expr) => {
+        $line.set_fg_color($color);
+    };
+    ($line:ident, bg = $color:expr, $($rest:tt)*) => {
+        $line.set_bg_color($color);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, bg = $color:expr) => {
+        $line.set_bg_color($color);
+    };
+    // Clear styles
+    // `plain`
+    ($line:ident, plain $($rest:tt)*) => {
+        $line.set_style($crate::Style::PLAIN);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    // SET styles
+    // `bold` | `dim` | `underline` | `inverse`
+    ($line:ident, bold $($rest:tt)*) => {
+        $line.set_style($crate::Style::BOLD);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, dim $($rest:tt)*) => {
+        $line.set_style($crate::Style::DIM);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, underline $($rest:tt)*) => {
+        $line.set_style($crate::Style::UNDERLINE);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, inverse $($rest:tt)*) => {
+        $line.set_style($crate::Style::INVERSE);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    // ADD styles
+    // `+` (`bold` | `dim` | `underline` | `inverse`)
+    ($line:ident, +bold $($rest:tt)*) => {
+        $line.activate_style($crate::Style::BOLD);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, +dim $($rest:tt)*) => {
+        $line.activate_style($crate::Style::DIM);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, +underline $($rest:tt)*) => {
+        $line.activate_style($crate::Style::UNDERLINE);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, +inverse $($rest:tt)*) => {
+        $line.activate_style($crate::Style::INVERSE);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    // REMOVE styles
+    // `-` (`bold` | `dim` | `underline` | `inverse`)
+    ($line:ident, -bold $($rest:tt)*) => {
+        $line.deactivate_style($crate::Style::BOLD);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, -dim $($rest:tt)*) => {
+        $line.deactivate_style($crate::Style::DIM);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, -underline $($rest:tt)*) => {
+        $line.deactivate_style($crate::Style::UNDERLINE);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, -inverse $($rest:tt)*) => {
+        $line.deactivate_style($crate::Style::INVERSE);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    // TOGGLE styles
+    // `^` (`bold` | `dim` | `underline` | `inverse`)
+    ($line:ident, ^bold $($rest:tt)*) => {
+        $line.toggle_style($crate::Style::BOLD);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, ^dim $($rest:tt)*) => {
+        $line.toggle_style($crate::Style::DIM);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, ^underline $($rest:tt)*) => {
+        $line.toggle_style($crate::Style::UNDERLINE);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, ^inverse $($rest:tt)*) => {
+        $line.toggle_style($crate::Style::INVERSE);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    // Anything else: text to output.
+    ($line:ident, $expr:expr, $($rest:tt)*) => {
+        $line.add_text($expr);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, $expr:expr) => {
+        $line.add_text($expr);
+    };
+    // Strip double commas
+    ($line:ident,, $($rest:tt)*) => {
+        $crate::liso_add!($line, $($rest)*);
+    };
+    // Finish munching
+    ($line:ident$(,)*) => {
+    };
+}
+
+/// Constructs a [`Line`](struct.Line.html) from pieces. More convenient than
+/// creating a `Line` and calling its methods.
+///
+/// You can use the [`liso_add!` macro](macro.liso_add.html) to conveniently
+/// add pieces to an existing `Line`.
+///
+/// Setting style doesn't affect color, and vice versa.
+///
+/// - `plain`  
+///   Clear all styles.
+/// - `<style>`  
+///   *Set* the style, clearing any other styles.
+/// - `+<style>`  
+///   Enable this style, leaving other styles unaffected.
+/// - `-<style>`  
+///   Disable this style, leaving other styles unaffected.
+/// - `^<style>`  
+///   Toggle this style, leaving other styles unaffected.
+/// - `fg = <color>`  
+///   Set the foreground color.
+/// - `bg = <color>`  
+///   Set the background color.
+/// - `reset`  
+///   Clear all style and color information.
+/// - `<text>`  
+///   Text to output.
+///
+/// You have to put a comma after `fg = ...`, `bg = ...`, `reset`, and text.
+/// They are optional everywhere else.
+///
+/// ```rust
+/// # use liso::liso;
+/// # let error_message = "Hello World!";
+/// let line = liso!(fg = red, "Error: ", bold, format!("{}", error_message));
+/// let line = liso!("Do you want to proceed? This is a ", bold+underline,
+///                  "really", plain, " bad idea!");
+/// ```
+///
+/// `<style>` may be `bold`, `dim`, `inverse`, or `italic`. `<color>` may be
+/// the actual name of a [`Color`](enum.Color.html), the lowercase equivalent,
+/// `None`/`none`, or any expression evaluating to an `Option<Color>`.
+/// `<text>` may be anything that you could pass directly to
+/// [`Line::add_text()`](struct.Line.html#method.add_text), including a simple
+/// string literal or a call to `format!`.
+#[macro_export]
+macro_rules! liso {
+    ($($rest:tt)*) => {
+        {
+            let mut line = $crate::Line::new();
+            $crate::liso_add!(line, $($rest)*,);
+            line
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -909,15 +1164,48 @@ mod tests {
         assert_eq!(line.elements[1].style, Style::INVERSE);
         assert_eq!(line.elements[2].style, Style::PLAIN);
     }
+    const MY_BLUE: Option<Color> = Some(Color::Blue);
+    const MY_RED: Option<Color> = Some(Color::Red);
+    #[test]
+    fn line_macro() {
+        let mut line = Line::new();
+        line.add_text("This is a test");
+        line.set_fg_color(Some(Color::Blue));
+        line.add_text(" of BLUE TESTS!");
+        line.set_fg_color(Some(Color::Red));
+        line.add_text(" And RED TESTS!");
+        line.set_bg_color(Some(Color::Blue));
+        line.add_text(" Now with backgrounds,");
+        line.set_bg_color(Some(Color::Red));
+        line.add_text(" and other backgrounds!");
+        let alt_line = liso![
+            "This is a test",
+            fg = Blue,
+            " of BLUE TESTS!",
+            fg = crate::tests::MY_RED,
+            " And RED TESTS!",
+            bg = crate::tests::MY_BLUE,
+            " Now with backgrounds,",
+            bg = red,
+            " and other backgrounds!",
+        ];
+        assert_eq!(line, alt_line);
+    }
+    #[test] #[cfg(feature="wrap")]
+    fn line_wrap() {
+        let mut line = liso![
+            "This is a simple line wrapping test."
+        ];
+        line.wrap_to_width(20);
+        assert_eq!(line,
+                   liso!["This is a simple\nline wrapping test."]);
+    }
     #[test] #[cfg(feature="wrap")]
     fn line_wrap_splat() {
         for n in 1 .. 200 {
-            let mut line = Line::new();
-            line.add_text("This is ");
-            line.set_style(Style::BOLD);
-            line.add_text("a test");
-            line.set_style(Style::empty());
-            line.add_text(" of line wrapping?");
+            let mut line = liso![
+                "This is ", bold, "a test", plain, " of line wrapping?"
+            ];
             line.wrap_to_width(n);
         }
     }

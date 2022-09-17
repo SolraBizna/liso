@@ -887,7 +887,7 @@ impl TtyState {
             None => Line::new(),
             Some(status) => {
                 let mut line = status.clone();
-                line.clear_and_break();
+                line.reset_and_break();
                 line
             },
         };
