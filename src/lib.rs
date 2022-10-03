@@ -242,6 +242,10 @@ impl Line {
     pub fn from_string(i: String) -> Line {
         Line::from_cow(Cow::Owned(i))
     }
+    /// Returns all the text in the line, without any styling information.
+    pub fn as_str(&self) -> &str {
+        &self.text
+    }
     fn append_text(&mut self, i: Cow<str>) {
         if i.len() == 0 { return }
         if self.text.len() == 0 {
