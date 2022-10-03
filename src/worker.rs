@@ -41,7 +41,7 @@ fn pipe_worker(req_tx: std_mpsc::Sender<Request>,
         }).unwrap();
     while let Ok(request) = rx.recv() {
         match request {
-            Request::Output(line) => {
+            Request::Output(line) | Request::OutputWrapped(line) => {
                 println!("{}", line.text);
             },
             Request::RawInput(x) => {
@@ -985,12 +985,19 @@ fn tty_worker(req_tx: std_mpsc::Sender<Request>,
     Ok(())
 }
 
+fn is_pipe_term(input: Option<&str>) -> bool {
+    match input {
+        Some("dumb") | Some("pipe") => true,
+        _ => false,
+    }
+}
+
 pub(crate) fn worker(req_tx: std_mpsc::Sender<Request>,
                      rx: std_mpsc::Receiver<Request>,
                      tx: tokio_mpsc::UnboundedSender<Response>)
 -> LifeOrDeath {
     if !(std::io::stdout().is_tty() && std::io::stdin().is_tty())
-    || std::env::var("TERM").as_ref().map(String::as_str) == Ok("dumb") {
+    || is_pipe_term(std::env::var("TERM").as_ref().ok().map(String::as_str)) {
         return pipe_worker(req_tx, rx, tx)
     }
     else {

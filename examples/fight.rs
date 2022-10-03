@@ -92,7 +92,7 @@ impl Fight {
                             }
                             else {
                                 self.io.wrapln(liso![
-                                    "You drink one of your potiones, healing \
+                                    "You drink one of your potions, healing \
                                      away ",
                                     bold,
                                     fg = if amount_healed < PLAYER_POTION_HEAL{

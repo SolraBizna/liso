@@ -1,3 +1,69 @@
+//! Liso (LEE-soh) is an acronym for Line Input with Simultaneous Output. It is
+//! a library for a particular kind of text-based Rust application; one where
+//! the user is expected to give command input at a prompt, but output can
+//! occur at any time. It provides simple line editing, and prevents input from
+//! clashing with output. It can be used asynchronously (with `tokio`) or
+//! synchronously (without).
+//!
+//! # Usage
+//! 
+//! Create an [`IO`](struct.IO.html) object with `IO::new()`. Liso will
+//! automatically configure itself based on how your program is being used.
+//! 
+//! Your `IO` instance can be used to send output or receive input. Call
+//! `clone_sender` to create a `Sender` instance, which can only be used to
+//! send output. You can call `clone_sender` as many times as you like, as well
+//! as cloning the `Sender`s directly. An unlimited number of threads/tasks can
+//! send output through Liso, but only one thread/task can receive user input:
+//! whichever one currently holds the `IO` instance.
+//! 
+//! Liso can work with `String`s and `&str`s directly. If you want to add style
+//! or color, create a [`Line`](struct.Line.html), either manually or using
+//! the convenient [`liso!` macro](macro.liso.html). Send output to the
+//! user by calling [`println()`](struct.Sender.html#method.println) or
+//! [`wrapln()`](struct.Sender.html#method.wrapln), whichever you prefer. Any
+//! styling and color information is reset after the line is output, so you
+//! don't have to worry about dangling attributes.
+//! 
+//! Liso supports a prompt line, which is presented ahead of the user input.
+//! Use [`prompt()`](struct.Sender.html#method.prompt) to set it. Styling and
+//! color information is *not* reset between the prompt and the current input
+//! text, so you can style/color the input text by having the desired
+//! styles/colors active at the end of the prompt line.
+//! 
+//! Liso supports an optional status line, which "hangs out" above the input
+//! text. Use [`status()`](struct.Sender.html#method.status) to set it. Printed
+//! text appears above the status line, the prompt and any in-progress input
+//! appears below it. Use this to present contextual or frequently-changing
+//! information.
+//! 
+//! Liso supports "notices", temporary messages that appear in place of the
+//! prompt and input for a limited time. Use
+//! [`notice()`](struct.Sender.html#method.notice) to display one. The notice
+//! will disappear when the allotted time elapses, when the user presses any
+//! key, or when another notice is displayed, whichever happens first. You
+//! should only use this in direct response to user input; in fact, the only
+//! legitimate use may be to complain about an unknown control character. (See
+//! [`Response::as_unknown`](enum.Response.html#method.as_unknown) for an
+//! example of this use.)
+//! 
+//! # Pipe mode
+//! 
+//! If *either* stdin or stdout is not a tty, *or* the `TERM` environment
+//! variable is set to either `dumb` or `pipe`, Liso enters "pipe mode". In
+//! this mode, status lines, notices, and prompts are not outputted, style
+//! information is ignored, and every line of input is passed directly to your
+//! program without any processing of control characters or escape sequences.
+//! This means that a program using Liso will behave nicely when used in a
+//! pipeline, or with a relatively unsophisticated terminal.
+//! 
+//! `TERM=dumb` is respected out of backwards compatibility with old UNIXes and
+//! real terminals that identify this way. `TERM=pipe` is present as an
+//! alternative for those who would rather not perpetuate an ableist slur, but
+//! is not compatible with other UNIX utilities and conventions. On UNIX. you
+//! can activate "pipe mode" without running afoul of any of this by piping the
+//! output of the Liso-enabled program to `cat`, as in `my_liso_program | cat`.
+
 use std::{
     borrow::Cow,
     time::{Duration, Instant},
@@ -57,14 +123,29 @@ impl From<std_mpsc::RecvTimeoutError> for DummyError {
 }
 
 /// Colors we support outputting. For compatibility, we only support the 3-bit
-/// ANSI colors. Use color sparingly.
+/// ANSI colors.
+/// 
+/// Here's a short list of reasons not to use color as the only source of
+/// certain information:
 ///
-/// Remember that some terminals don't support color at all, and that some
-/// users will be using a different theme from you (white on black, black on
-/// white, green on black, yellow on orange, solarized, something else with
-/// scrambled/shuffled colors...), and some users will have some form of
-/// colorblindness. Never use color as the *only* source of particular
-/// information.
+/// - Some terminals don't support color at all.
+/// - Some terminals support color, but not all the ANSI colors. (e.g. the
+///   Atari ST's VT52 emulator in medium-res mode, which supports white, black,
+///   red, and green.)
+/// - Some users will be using unexpected themes. White on black, black on
+///   white, green on black, yellow on orange, and "Solarized" are all common.
+/// - Many users have some form of colorblindness. The most common form,
+///   affecting as much as 8% of the population, would make `Red`, `Yellow`,
+///   and `Green` hard to distinguish from one another. Every other imaginable
+///   variation also exists.
+/// 
+/// And some guidelines to adhere to:
+/// 
+/// - Never specify a foreground color of `White` or `Black` without also
+///   specifying a background color, or vice versa.
+/// - Instead of setting white-on-black or black-on-white, consider using
+///   [inverse video](struct.Style.html#associatedconstant.INVERSE) to achieve
+///   your goal instead.
 #[derive(Clone,Copy,Debug,Eq,PartialEq)]
 #[repr(u8)]
 pub enum Color {
@@ -579,10 +660,20 @@ enum Request {
 /// to the line editor. (e.g. control-A -> go to beginning of line,
 /// control-E -> go to end of line, control-W -> delete word...)
 #[derive(Debug,PartialEq,Eq,PartialOrd,Ord)]
+#[non_exhaustive]
 pub enum Response {
-    /// Sent when the terminal or the IO thread have died.
+    /// Sent when the terminal or the IO thread have died. Once you receive
+    /// this once, you will never receive any other `Response` from Liso again.
+    /// Your program should exit soon after, or at the very least should close
+    /// down that `IO` instance.
+    /// 
+    /// If your program receives `Response::Dead` on the same `IO` instance
+    /// too many times, Liso will panic. This is to prevent poorly-written
+    /// programs from failing to exit after a hangup condition or bug in
+    /// Liso cut off user input.
     Dead,
-    /// Sent when the user finishes entering a line of input.
+    /// Sent when the user finishes entering a line of input. This is the
+    /// entire line.
     Input(String),
     /// Sent when the user types control-C, which normally means they want your
     /// program to quit.
@@ -591,14 +682,16 @@ pub enum Response {
     /// program to suspend itself.
     Suspend,
     /// Sent when the user types control-D on an empty line, which normally
-    /// means that they are done providing input.
+    /// means that they are done providing input (possibly temporarily).
     Finish,
     /// Sent when the user types control-T, which on some BSDs is a standard
     /// way to request that a program give a status report or other progress
     /// information.
     Info,
     /// Sent when the user types control-backslash, or when a break condition
-    /// is detected. The meaning of this is application-specific.
+    /// is detected. The meaning of this is application-specific. If you're
+    /// running on a real, physical terminal line, this usually indicates an
+    /// excessively noisy line, or a disconnect ("break") in the line.
     Break,
     /// Sent when the user presses Escape.
     Escape,
@@ -606,14 +699,21 @@ pub enum Response {
     Swap,
     /// Sent when the user presses an unknown control character with the given
     /// value (which will be between 0 and 31 inclusive).
+    /// 
+    /// Don't use particular values of `Unknown` for any specific purpose.
+    /// Later versions of Liso may add additional `Response` variants for new
+    /// control keys, or handle more control keys itself, replacing the
+    /// `Unknown(...)` values those keys used to send. See
+    /// [`as_unknown`](#method.as_unknown) for an example of how this variant
+    /// should be used (i.e. not directly).
     Unknown(u8),
 }
 
 impl Response {
     /// Returns the control code that triggered this response, e.g. 10 for
-    /// `Input`, 3 for `Quit`, ... Useful if you want to produce a generic
-    /// "unknown key ^X" kind of message for all the various optional keys you
-    /// might not want to handle:
+    /// `Input`, 3 for `Quit`, ... Use this to produce a generic "unknown key
+    /// key ^X" kind of message for any `Response` variants you don't handle,
+    /// perhaps with code like:
     ///
     /// ```no_run
     /// # use std::time::Duration;
@@ -622,7 +722,7 @@ impl Response {
     /// # let io = liso::IO::new();
     /// match response {
     ///     Response::Input(_) => { /* handle input somehow */ },
-    ///     Response::Quit => return,
+    ///     Response::Quit | Response::Dead => return,
     ///     other => {
     ///         io.notice(format!("unknown key {}",
     ///                           other.as_unknown() as char),
@@ -631,8 +731,8 @@ impl Response {
     /// }
     /// ```
     ///
-    /// (note that Liso converts control characters to reverse-video ^X forms
-    /// on display)
+    /// (Liso converts control characters to reverse-video ^X forms on display,
+    /// so this will display like "unknown key ^X" with the "^X" hilighted.)
     pub fn as_unknown(&self) -> u8 {
         match self {
             &Response::Input(_) => 10,
@@ -1203,10 +1303,10 @@ macro_rules! liso_add {
 ///                  "really", plain, " bad idea!");
 /// ```
 ///
-/// `<style>` may be `bold`, `dim`, `inverse`, or `italic`. `<color>` may be
-/// the actual name of a [`Color`](enum.Color.html), the lowercase equivalent,
-/// `None`/`none`, or any expression evaluating to an `Option<Color>`.
-/// `<text>` may be anything that you could pass directly to
+/// `<style>` may be `bold`, `dim`, `inverse`, `italic`, or `plain`.
+/// `<color>` may be the actual name of a [`Color`](enum.Color.html), the
+/// lowercase equivalent, `None`/`none`, or any expression evaluating to an
+/// `Option<Color>`. `<text>` may be anything that you could pass directly to
 /// [`Line::add_text()`](struct.Line.html#method.add_text), including a simple
 /// string literal or a call to `format!`.
 #[macro_export]

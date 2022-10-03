@@ -1,10 +1,12 @@
-Liso (LEE-soh) is an acronym for Line Input with Simultaneous Output. It is a library for a particular kind of text-based Rust application; one where the user is expected to give command input at a prompt, but output can occur at any time. It provides simple line editing, and prevents input from clashing with output.
+Liso (LEE-soh) is an acronym for Line Input with Simultaneous Output. It is a library for a particular kind of text-based Rust application; one where the user is expected to give command input at a prompt, but output can occur at any time. It provides simple line editing, and prevents input from clashing with output. It can be used asynchronously (with `tokio`) or synchronously (without).
 
 It should work anywhere [Crossterm](https://crates.io/crates/crossterm) does:
 
 - Windows 7 or later
 - On UNIX, any system with an ANSI-compatible terminal (via crossterm) or a
   VT52-compatible terminal (via custom support).
+
+See [the crate documentation](https://docs.rs/liso/latest/liso/) for more information.
 
 **NOTE: WORK IN PROGRESS!** Not release ready!
 
@@ -28,17 +30,21 @@ Liso provides line editing based on a commonly-used subset of the default GNU Re
 - **Control-X**: Send `Swap`.
 - **Return (control-M) or Enter (control-J)**: Send the current line of input.
 
-More bindings may be added in the future.
+More bindings may be added in the future, and some of these are subject to change before 1.0.
 
 # TODO
 
+- "suspended" method, which temporarily closes down Liso interactivity, runs
+  a passed-in closure, then hits back where it left off.
+- "echoln" method, which is exactly like "println" but won't output anything
+  in "pipe mode".
 - Control-S/-Q on input
 - Squelch output feature (with mandatory status line, related to above)
 - Control-G on input
 - History
 - Tab completion
 - Windows testing
-- Document all the things
+- Document all the things, especially the weird VT52 module
 - Move all the channels into TtyState
 
 # Legalese
