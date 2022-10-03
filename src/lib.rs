@@ -242,15 +242,6 @@ impl Line {
     pub fn from_string(i: String) -> Line {
         Line::from_cow(Cow::Owned(i))
     }
-    /// Creates a new line, containing the given, ANSI-styled, text. Creates
-    /// a new copy iff the passed text contains control characters or ANSI
-    /// escape sequences.
-    pub fn from_ansi<'a, T>(&mut self, i: T) -> Line
-    where T: Into<Cow<'a, str>> {
-        let mut ret = Line::new();
-        ret.add_ansi(i);
-        ret
-    }
     fn append_text(&mut self, i: Cow<str>) {
         if i.len() == 0 { return }
         if self.text.len() == 0 {
@@ -329,15 +320,6 @@ impl Line {
             },
         }
         self
-    }
-    /// Adds additional text to the `Line`, starting with the current styling,
-    /// and applying any ANSI control sequences we can understand.
-    ///
-    /// Strips any control sequences other than Select Graphics Rendition,
-    /// as well as any Graphics Rendition sequences we don't know.
-    pub fn add_ansi<'a, T>(&mut self, _i: T) -> &mut Line
-    where T: Into<Cow<'a, str>> {
-        todo!()
     }
     /// Returns the Style in effect at the end of the line, as it exists now.
     pub fn get_style(&self) -> Style {

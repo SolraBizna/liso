@@ -32,7 +32,6 @@ More bindings may be added in the future.
 
 # TODO
 
-- `Line::add_ansi`
 - `Line::as_str` (no styling info)
 - `Line` constructors that take style and/or color as well as text
 - Control-S/-Q on input
