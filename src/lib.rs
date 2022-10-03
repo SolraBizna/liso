@@ -52,10 +52,10 @@
 //! If *either* stdin or stdout is not a tty, *or* the `TERM` environment
 //! variable is set to either `dumb` or `pipe`, Liso enters "pipe mode". In
 //! this mode, status lines, notices, and prompts are not outputted, style
-//! information is ignored, and every line of input is passed directly to your
-//! program without any processing of control characters or escape sequences.
-//! This means that a program using Liso will behave nicely when used in a
-//! pipeline, or with a relatively unsophisticated terminal.
+//! information is discarded, and every line of input is passed directly to
+//! your program without any processing of control characters or escape
+//! sequences. This means that a program using Liso will behave nicely when
+//! used in a pipeline, or with a relatively unsophisticated terminal.
 //! 
 //! `TERM=dumb` is respected out of backwards compatibility with old UNIXes and
 //! real terminals that identify this way. `TERM=pipe` is present as an
