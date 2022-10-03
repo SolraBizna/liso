@@ -62,7 +62,7 @@ impl Fight {
                 "What will you do?\n", fg = green, "> ", fg = None
             ], true, false);
             match self.io.blocking_read() {
-                Response::Dead => panic!("LISO died!"),
+                Response::Dead => panic!("Liso died!"),
                 Response::Quit => return,
                 Response::Input(wat) => {
                     self.io.wrapln(liso![fg=green,"> ",fg=none,&wat]);

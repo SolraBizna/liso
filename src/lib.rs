@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    time::Duration,
+    time::{Duration, Instant},
     sync::mpsc as std_mpsc,
 };
 
@@ -754,8 +754,10 @@ impl IO {
         self.sender.clone()
     }
     /// Erase the prompt/status lines, put the terminal in a sensible mode,
-    /// and otherwise clean up everything we've done to the terminal. You
-    /// may need to make sure this gets called when your program terminates.
+    /// and otherwise clean up everything we've done to the terminal. This will
+    /// happen automatically when this `IO` instance is dropped; you only need
+    /// this method if you want to shut Liso down asynchronously for some
+    /// reason.
     ///
     /// If you made copies of this `Sender`, they will be "dead"; calling their
     /// methods won't panic, but it won't do anything else either.
@@ -783,6 +785,10 @@ impl IO {
             }
         }
     }
+    /// Erase the prompt/status lines, put the terminal in a sensible mode,
+    /// and otherwise clean up everything we've done to the terminal. This will
+    /// happen automatically when this `IO` instance is dropped, so you
+    /// probably don't need to call this manually.
     pub fn blocking_die(mut self) {
         self.actually_blocking_die()
     }
@@ -792,18 +798,83 @@ impl IO {
             panic!("Client program is looping forever despite receiving `Response::Dead` {} times. Program bug!", MAX_DEATH_COUNT);
         }
     }
+    /// Read a [`Response`](enum.Response.html) from the user, blocking this
+    /// task until something is received.
+    ///
+    /// This is an asynchronous function. To read from non-asynchronous code,
+    /// you should use `blocking_read` instead.
+    ///
+    /// If `Response::Dead` is received too many times, Liso will assume your
+    /// program is ignoring it and panic! Avoid this problem by handling
+    /// `Response::Dead` correctly.
     pub async fn read(&mut self) -> Response {
         match self.rx.recv().await {
             None => { self.report_death(); Response::Dead },
             Some(x) => x,
         }
     }
+    /// Read a [`Response`](enum.Response.html) from the user, blocking this
+    /// thread until the given `timeout` elapses or something is received.
+    ///
+    /// This is a synchronous function. To achieve the same effect
+    /// asynchronously, you can wrap `read` in `tokio::time::timeout`.
+    ///
+    /// If `Response::Dead` is received too many times, Liso will assume your
+    /// program is ignoring it and panic! Avoid this problem by handling
+    /// `Response::Dead` correctly.
+    pub fn read_timeout(&mut self, timeout: Duration) -> Option<Response> {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().expect("Couldn't create temporary Tokio runtime for `read_timeout`");
+        rt.block_on(async {
+            let timeout = tokio::time::timeout(timeout, self.rx.recv());
+            match timeout.await {
+                Ok(None) => { self.report_death(); Some(Response::Dead) },
+                Ok(Some(x)) => Some(x),
+                Err(_) => None,
+            }
+        })
+    }
+    /// Read a [`Response`](enum.Response.html) from the user, blocking this
+    /// thread until the given `deadline` is reached or something is received.
+    ///
+    /// This is a synchronous function. To achieve the same effect
+    /// asynchronously, you can wrap `read` in `tokio::time::timeout_at`.
+    ///
+    /// If `Response::Dead` is received too many times, Liso will assume your
+    /// program is ignoring it and panic! Avoid this problem by handling
+    /// `Response::Dead` correctly.
+    pub fn read_deadline(&mut self, deadline: Instant) -> Option<Response> {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().expect("Couldn't create temporary Tokio runtime for `read_deadline`");
+        rt.block_on(async {
+            let timeout = tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), self.rx.recv());
+            match timeout.await {
+                Ok(None) => { self.report_death(); Some(Response::Dead) },
+                Ok(Some(x)) => Some(x),
+                Err(_) => None,
+            }
+        })
+    }
+    /// Read a [`Response`](enum.Response.html) from the user, blocking this
+    /// thread until something is received.
+    ///
+    /// This is a synchronous function. To read from asynchronous code, you
+    /// should use `read` instead.
+    ///
+    /// If `Response::Dead` is received too many times, Liso will assume your
+    /// program is ignoring it and panic! Avoid this problem by handling
+    /// `Response::Dead` correctly.
     pub fn blocking_read(&mut self) -> Response {
         match self.rx.blocking_recv() {
             None => { self.report_death(); Response::Dead },
             Some(x) => x,
         }
     }
+    /// Read a [`Response`](enum.Response.html) from the user, if one is
+    /// available. If no inputs are currently available, return immediately
+    /// instead of blocking or waiting.
+    ///
+    /// If `Response::Dead` is received too many times, Liso will assume your
+    /// program is ignoring it and panic! Avoid this problem by handling
+    /// `Response::Dead` correctly.
     pub fn try_read(&mut self) -> Option<Response> {
         use tokio::sync::mpsc::error::TryRecvError;
         match self.rx.try_recv() {
