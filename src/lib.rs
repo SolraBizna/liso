@@ -190,7 +190,12 @@ pub struct Sender {
 pub struct IO {
     sender: Sender,
     rx: tokio_mpsc::UnboundedReceiver<Response>,
+    death_count: u32,
 }
+
+/// Number of times that we will report `Response::Dead` before we decide that
+/// our caller isn't handling it correctly, and panic.
+const MAX_DEATH_COUNT: u32 = 9;
 
 /// An individual styled span within a line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -569,12 +574,15 @@ enum Request {
     /// possible, meaningful escape sequences must already have been parsed
     /// out. (The pipe worker doesn't interpret escape sequences and therefore
     /// does no such processing.)
+    #[doc(hidden)]
     RawInput(String),
     /// Another implementation detail, used to implement notices.
+    #[doc(hidden)]
     Heartbeat,
     /// Another implementation detail. If the crossterm event system is being
     /// used, this is an event received. This can be the case even if the
     /// crossterm *input* system isn't being used.
+    #[doc(hidden)]
     CrosstermEvent(crossterm::event::Event),
 }
 
@@ -736,6 +744,7 @@ impl IO {
         IO {
             sender: Sender { tx: request_tx },
             rx: response_rx,
+            death_count: 0,
         }
     }
     /// An `IO` instance contains both a `Sender` (to produce output) and a
@@ -777,15 +786,21 @@ impl IO {
     pub fn blocking_die(mut self) {
         self.actually_blocking_die()
     }
+    fn report_death(&mut self) {
+        self.death_count = self.death_count.saturating_add(1);
+        if self.death_count >= MAX_DEATH_COUNT {
+            panic!("Client program is looping forever despite receiving `Response::Dead` {} times. Program bug!", MAX_DEATH_COUNT);
+        }
+    }
     pub async fn read(&mut self) -> Response {
         match self.rx.recv().await {
-            None => Response::Dead,
+            None => { self.report_death(); Response::Dead },
             Some(x) => x,
         }
     }
     pub fn blocking_read(&mut self) -> Response {
         match self.rx.blocking_recv() {
-            None => Response::Dead,
+            None => { self.report_death(); Response::Dead },
             Some(x) => x,
         }
     }
@@ -793,7 +808,7 @@ impl IO {
         use tokio::sync::mpsc::error::TryRecvError;
         match self.rx.try_recv() {
             Ok(x) => Some(x),
-            Err(TryRecvError::Disconnected) => Some(Response::Dead),
+            Err(TryRecvError::Disconnected) => { self.report_death(); Some(Response::Dead) },
             Err(TryRecvError::Empty) => None,
         }
     }

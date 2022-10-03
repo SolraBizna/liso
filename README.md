@@ -32,7 +32,6 @@ More bindings may be added in the future.
 
 # TODO
 
-- "enforced" EOF handling
 - `Liso::read_timeout`
 - `Line::add_ansi`
 - `Line::as_str` (no styling info)
