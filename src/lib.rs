@@ -631,6 +631,8 @@ enum Request {
         input_allowed: bool,
         clear_input: bool,
     },
+    /// Sent by `suspend_and_run`
+    SuspendAndRun(Box<dyn FnMut() + Send>),
     /// Sent by the input task, when some input is inputted
     Bell,
     /// Sent when we're cleaning up
@@ -811,6 +813,29 @@ impl Sender {
     /// Get the user's attention with an audible or visible bell.
     pub fn bell(&self) {
         let _ = self.tx.send(Request::Bell);
+    }
+    /// Use this when you need to perform some work that outputs directly to
+    /// stdout/stderr and can't run it through Liso. Prompt, status, and input
+    /// in progress will be erased from the screen, and the terminal will be
+    /// put back into normal mode. When the function returns, Liso will set up
+    /// the terminal, display the prompt, etc. as though nothing had happened.
+    ///
+    /// Bear in mind that this will run in a separate thread, possibly after a
+    /// short delay. If you need to return a value, or otherwise communicate
+    /// with the main program, you should use the usual inter-thread
+    /// communication primitives, such as channels or atomics.
+    ///
+    /// Note that you **cannot** use this to create a subprocess that will read
+    /// from stdin! Even though *output* is suspended, Liso will still be
+    /// reading from stdin in another thread, and thus, will be competing with
+    /// the subprocess for user input. (On sane UNIXes, this will result in
+    /// your program being suspended by your shell, and then misbehaving when
+    /// it resumes.) If you want to create a subprocess that can use stdin and
+    /// stdout, you'll have to write your own pipe handling based around Liso.
+    /// If you want to create a subprocess that can interactively use the
+    /// terminal—you can't!
+    pub fn suspend_and_run<F: 'static + FnMut() + Send>(&self, f: F) {
+        let _ = self.tx.send(Request::SuspendAndRun(Box::new(f)));
     }
 }
 

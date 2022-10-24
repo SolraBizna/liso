@@ -13,6 +13,7 @@ use std::result::Result; // override crossterm::Result
 
 /// Uses `crossterm` for input and output.
 pub(crate) struct Crossterminal {
+    suspended: bool,
     old_hook: Option<Box<dyn Fn(&panic::PanicInfo<'_>) + Sync + Send + 'static>>,
     stdout: Stdout,
     cur_style: Style,
@@ -241,28 +242,13 @@ impl Crossterminal {
                 .spawn(move || { input_thread(input_rx, req_tx) })
                 .unwrap();
         }
-        let mut stdout = std::io::stdout();
-        // queue, but don't actually output anything until the first command...
-        queue!(stdout,
-               cursor::Hide, terminal::DisableLineWrap,
-               style::ResetColor, style::SetAttribute(CtAttribute::Reset))?;
-        let old_hook = panic::take_hook();
-        let default_hook = panic::take_hook();
-        panic::set_hook(Box::new(move |info| {
-            let mut stdout = std::io::stdout();
-            let _ = queue!(stdout,
-                           cursor::Show, terminal::EnableLineWrap,
-                           style::ResetColor,
-                           style::SetAttribute(CtAttribute::Reset),
-                           terminal::Clear(terminal::ClearType::FromCursorDown));
-            let _ = stdout.flush();
-            let _ = terminal::disable_raw_mode();
-            default_hook(info)
-        }));
-        Ok(Crossterminal {
-            stdout: stdout, old_hook: Some(old_hook),
+        let stdout = std::io::stdout();
+        let mut ret = Crossterminal {
+            stdout: stdout, old_hook: None, suspended: true,
             cur_style: Style::PLAIN, cur_fg: None, cur_bg: None,
-        })
+        };
+        ret.unsuspend()?;
+        Ok(ret)
     }
 }
 
@@ -396,13 +382,50 @@ impl Term for Crossterminal {
         self.stdout.flush()?;
         Ok(())
     }
-    fn cleanup(&mut self) -> LifeOrDeath {
+    fn unsuspend(&mut self) -> LifeOrDeath {
+        assert!(self.suspended);
+        // queue, but don't actually output anything until the first command...
         queue!(self.stdout,
-               cursor::Show, terminal::EnableLineWrap,
-               style::ResetColor, style::SetAttribute(CtAttribute::Reset))?;
+            cursor::Hide, terminal::DisableLineWrap,
+            style::ResetColor, style::SetAttribute(CtAttribute::Reset))?;
+        let old_hook = panic::take_hook();
+        let default_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |info| {
+            let mut stdout = std::io::stdout();
+            let _ = queue!(stdout,
+                            cursor::Show, terminal::EnableLineWrap,
+                            style::ResetColor,
+                            style::SetAttribute(CtAttribute::Reset),
+                            terminal::Clear(terminal::ClearType::FromCursorDown));
+            let _ = stdout.flush();
+            let _ = terminal::disable_raw_mode();
+            default_hook(info)
+        }));
+        terminal::enable_raw_mode()?;
+        self.suspended = false;
+        self.old_hook = Some(old_hook);
+        Ok(())
+    }
+    fn suspend(&mut self) -> LifeOrDeath {
+        assert!(!self.suspended);
+        queue!(self.stdout,
+            cursor::Show, terminal::EnableLineWrap,
+            style::ResetColor, style::SetAttribute(CtAttribute::Reset),
+            terminal::Clear(terminal::ClearType::FromCursorDown))?;
+        terminal::disable_raw_mode()?;
+        self.cur_style = Style::PLAIN;
+        self.cur_fg = None;
+        self.cur_bg = None;
         self.stdout.flush()?;
         if let Some(old_hook) = self.old_hook.take() {
             panic::set_hook(old_hook);
+        }
+        self.suspended = true;
+        Ok(())
+    }
+    fn cleanup(&mut self) -> LifeOrDeath {
+        if !self.suspended {
+            self.suspend()?;
         }
         Ok(())
     }

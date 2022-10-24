@@ -15,6 +15,7 @@ use unicode_width::UnicodeWidthChar;
 /// Talks to a VT52, or (way more likely) an Atari ST (or descendant) emulating
 /// one.
 pub(crate) struct Vt52 {
+    suspended: bool,
     old_hook: Option<Box<dyn Fn(&panic::PanicInfo<'_>) + Sync + Send + 'static>>,
     stdout: Stdout,
     num_colors: u8,
@@ -146,32 +147,14 @@ impl Vt52 {
             .name("Liso input processing thread".to_owned())
             .spawn(move || { input_thread(input_rx, req_tx) })
             .unwrap();
-        let mut stdout = std::io::stdout();
-        // queue, but don't actually output anything until the first command...
-        if white_on_black {
-            stdout.write_all(b"\x1Bf\x1Bw\x1Bq\x1Bb\x20\x1Bc\x2F")?;
-        }
-        else {
-            stdout.write_all(b"\x1Bf\x1Bw\x1Bq\x1Bb\x2F\x1Bc\x20")?;
-        }
-        let old_hook = panic::take_hook();
-        let default_hook = panic::take_hook();
-        panic::set_hook(Box::new(move |info| {
-            let mut stdout = std::io::stdout();
-            let _ = queue!(stdout,
-                           cursor::Show, terminal::EnableLineWrap,
-                           style::ResetColor,
-                           style::SetAttribute(CtAttribute::Reset),
-                           terminal::Clear(terminal::ClearType::FromCursorDown));
-            let _ = stdout.flush();
-            let _ = terminal::disable_raw_mode();
-            default_hook(info)
-        }));
-        Ok(Vt52 {
-            stdout: stdout, old_hook: Some(old_hook),
+        let stdout = std::io::stdout();
+        let mut ret = Vt52 {
+            stdout: stdout, old_hook: None, suspended: true,
             cur_style: Style::PLAIN, cur_fg: num_colors-1, cur_bg: 0,
             num_colors, white_on_black,
-        })
+        };
+        ret.unsuspend()?;
+        Ok(ret)
     }
 }
 
@@ -360,7 +343,35 @@ impl Term for Vt52 {
         self.stdout.flush()?;
         Ok(())
     }
-    fn cleanup(&mut self) -> LifeOrDeath {
+    fn unsuspend(&mut self) -> LifeOrDeath {
+        assert!(self.suspended);
+        // queue, but don't actually output anything until the first command...
+        if self.white_on_black {
+            self.stdout.write_all(b"\x1Bf\x1Bw\x1Bq\x1Bb\x20\x1Bc\x2F")?;
+        }
+        else {
+            self.stdout.write_all(b"\x1Bf\x1Bw\x1Bq\x1Bb\x2F\x1Bc\x20")?;
+        }
+        let old_hook = panic::take_hook();
+        let default_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |info| {
+            let mut stdout = std::io::stdout();
+            let _ = queue!(stdout,
+                            cursor::Show, terminal::EnableLineWrap,
+                            style::ResetColor,
+                            style::SetAttribute(CtAttribute::Reset),
+                            terminal::Clear(terminal::ClearType::FromCursorDown));
+            let _ = stdout.flush();
+            let _ = terminal::disable_raw_mode();
+            default_hook(info)
+        }));
+        terminal::enable_raw_mode()?;
+        self.suspended = false;
+        self.old_hook = Some(old_hook);
+        Ok(())
+    }
+    fn suspend(&mut self) -> LifeOrDeath {
+        assert!(!self.suspended);
         if self.white_on_black {
             write!(self.stdout, "\x1Bb\x20\x1Bc\x2F\x1BJ\x1Bv\x1Be")?;
         }
@@ -370,6 +381,14 @@ impl Term for Vt52 {
         self.stdout.flush()?;
         if let Some(old_hook) = self.old_hook.take() {
             panic::set_hook(old_hook);
+        }
+        terminal::disable_raw_mode()?;
+        self.suspended = true;
+        Ok(())
+    }
+    fn cleanup(&mut self) -> LifeOrDeath {
+        if !self.suspended {
+            self.suspend()?;
         }
         Ok(())
     }

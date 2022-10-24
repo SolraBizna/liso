@@ -414,6 +414,13 @@ impl TtyState {
                 self.output_line(&line)?;
                 self.term.borrow_mut().reset_attrs()?;
             },
+            Request::SuspendAndRun(mut wat) => {
+                self.rollin()?;
+                self.remembered_output = None;
+                self.term.borrow_mut().suspend()?;
+                wat();
+                self.term.borrow_mut().unsuspend()?;
+            },
             Request::Status(line) => {
                 if self.status != line {
                     self.rollout_needed = true;

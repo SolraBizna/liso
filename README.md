@@ -34,8 +34,6 @@ More bindings may be added in the future, and some of these are subject to chang
 
 # TODO
 
-- "suspended" method, which temporarily closes down Liso interactivity, runs
-  a passed-in closure, then hits back where it left off.
 - Control-S/-Q on input
 - Squelch output feature (with mandatory status line, related to above)
 - Control-G on input

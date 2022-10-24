@@ -40,6 +40,8 @@ pub(crate) trait Term {
     fn get_width(&mut self) -> u32;
     fn cur_style(&self) -> Style;
     fn flush(&mut self) -> LifeOrDeath;
+    fn suspend(&mut self) -> LifeOrDeath;
+    fn unsuspend(&mut self) -> LifeOrDeath;
     fn cleanup(&mut self) -> LifeOrDeath;
 }
 
