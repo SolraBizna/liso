@@ -43,7 +43,6 @@ Features that are currently set as prerequisites for a 1.0 release.
 - History
 - Tab completion
 - Windows testing
-- Document the VT52 support
 - Move all the channels into TtyState
 - Optimize, hintify, reversiblize, etc. `LineCharIterator`
 - Clear all TODOs
@@ -67,6 +66,20 @@ Features that I'd like, but that I am unlikely ever to have the time to implemen
 
 - Right-to-left text support
 - Better combining character support
+
+# VT52 support!?
+
+The Atari ST personal computer, released in 1985, came with a VT52 emulator in its onboard ROM. While the ability to serve as a cheap remote terminal was warmly welcomed in the market, the VT52 was a strange choice of terminals to emulate, since, even back in 1985, it was already considered woefully obsolete. Nevertheless, this emulator served as as testbed for support for strange, non-ANSI, non-Crossterm terminals in Liso.
+
+If the `TERM` environment variable exists, and the base type (to the left of the `-`, if any) is `st52`, `tw52`, `tt52`, `at`, `atari`, `atarist`, `atari_st`, `vt52`, `stv52`, or `stv52pc`, then Liso's VT52 support will be activated. It will try to figure out the number of colors and special feature support based on which particular terminal type you've selected and how wide it is. You should use one of the following values:
+
+- `TERM=st52-m`, 80 x 50: Atari ST with monochrome monitor (high res).
+- `TERM=st52`, 80 x 25: Atari ST with color monitor (medium res, 4 colors).
+- `TERM=st52`, 40 x 25: Atari ST with color monitor (low res, 16 colors).
+- `TERM=atari`, any size: Later Atari with color monitor (assumes 16 colors).
+- `TERM=vt52`, any size: Real VT52 (untested).
+
+Input and output work. Special characters other than control keys don't work, I will need to do more testing to understand why. Testing Liso against Atari's VT52 emulator was extremely helpful in optimizing the redrawing routine, and teasing out some edge cases in the style handling.
 
 # Legalese
 

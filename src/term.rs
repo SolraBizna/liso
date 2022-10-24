@@ -57,15 +57,21 @@ pub(crate) fn new_term(req_tx: &std_mpsc::Sender<Request>)
                     let monochrome = main == "vt52" || term.ends_with("-m");
                     let num_colors = if monochrome { 2 }
                     else if main.contains("st") {
-                        // When it's an Atari ST, if it's color and in
-                        // 80-column mode, then it's in 2-bit mode (4 colors).
-                        // If it's in 40-column mode, then it's in 4-bit mode
-                        // (16 colors).
-                        // If it's not exactly 80 columns, we assume it's not
-                        // an Atari ST...
+                        // When it's an Atari ST, there are three possibilities
+                        // - 80 x 50: high res = monochrome
+                        // - 80 x 25: medium res = 4 colors
+                        // - 40 x 25: low res = 16 colors
+                        // Anything else is a misconfiguration, so we just
+                        // assume monochrome to be safe.
                         match crossterm::terminal::size().unwrap_or((80,25)) {
-                            (80, _) => 4,
-                            _ => 16,
+                            (80, 50) => 2,
+                            (80, 25) => 4,
+                            (40, 25) => 16,
+                            _ => {
+                                eprintln!("Your terminal is configured \
+                                           incorrectly. Assuming monochrome.");
+                                2
+                            },
                         }
                     }
                     else { 16 };
