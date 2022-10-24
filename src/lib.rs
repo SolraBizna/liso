@@ -907,7 +907,8 @@ impl Common {
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn println<T>(&self, line: T)
     where T: Into<Line> {
-        let _ = self.tx.send(Request::Output(line.into()));
+        self.tx.send(Request::Output(line.into()))
+            .expect("Liso output has stopped")
     }
     /// Prints a (possibly styled) line of regular output to the screen,
     /// wrapping it to the width of the terminal. Only available with the
@@ -918,7 +919,8 @@ impl Common {
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn wrapln<T>(&self, line: T)
     where T: Into<Line> {
-        let _ = self.tx.send(Request::OutputWrapped(line.into()));
+        self.tx.send(Request::OutputWrapped(line.into()))
+            .expect("Liso output has stopped")
     }
     /// Prints a (possibly styled) line of regular output to the screen, but
     /// only if we are being run interactively. Use this if you want to to echo
@@ -930,7 +932,8 @@ impl Common {
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn echoln<T>(&self, line: T)
     where T: Into<Line> {
-        let _ = self.tx.send(Request::OutputEcho(line.into()));
+        self.tx.send(Request::OutputEcho(line.into()))
+            .expect("Liso output has stopped");
     }
     /// Sets the status line to the given (possibly styled) text. This will be
     /// displayed above the prompt, but below printed output. (Does nothing in
@@ -945,7 +948,8 @@ impl Common {
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn status<T>(&self, line: Option<T>)
     where T: Into<Line> {
-        let _ = self.tx.send(Request::Status(line.map(T::into)));
+        self.tx.send(Request::Status(line.map(T::into)))
+            .expect("Liso output has stopped");
     }
     /// Displays a (possibly styled) notice that temporarily replaces the
     /// prompt. The notice will disappear when the allotted time elapses, when
@@ -963,7 +967,8 @@ impl Common {
     /// [1]: enum.Response.html
     pub fn notice<T>(&self, line: T, max_duration: Duration)
     where T: Into<Line> {
-        let _ = self.tx.send(Request::Notice(line.into(), max_duration));
+        self.tx.send(Request::Notice(line.into(), max_duration))
+            .expect("Liso output has stopped")
     }
     /// Sets the prompt to the given (possibly styled) text. The prompt is
     /// displayed in front of the user's input, unless we are running in pipe
@@ -992,23 +997,24 @@ impl Common {
                      input_allowed: bool, clear_input: bool)
     where T: Into<Line> {
         let line = line.into();
-        let _ = self.tx.send(Request::Prompt {
+        self.tx.send(Request::Prompt {
             line: if line.elements.len() == 0 { None } else { Some(line) },
             input_allowed, clear_input
-        });
+        }).expect("Liso output has stopped");
     }
     /// Removes the prompt. The boolean parameters have the same meaning as for
     /// `prompt`.
     #[deprecated="Use `prompt` with a blank line instead."]
     #[doc(hidden)]
     pub fn remove_prompt(&self, input_allowed: bool, clear_input: bool) {
-        let _ = self.tx.send(Request::Prompt {
+        self.tx.send(Request::Prompt {
             line: None, input_allowed, clear_input
-        });
+        }).expect("Liso output has stopped");
     }
     /// Get the user's attention with an audible or visible bell.
     pub fn bell(&self) {
-        let _ = self.tx.send(Request::Bell);
+        self.tx.send(Request::Bell)
+            .expect("Liso output has stopped");
     }
     /// Use this when you need to perform some work that outputs directly to
     /// stdout/stderr and can't run it through Liso. Prompt, status, and input
@@ -1032,7 +1038,8 @@ impl Common {
     /// terminal—you have to drop the `InputOutput` instance, and all of the
     /// existing `Output` instances will go dead as a result. Just don't do it!
     pub fn suspend_and_run<F: 'static + FnMut() + Send>(&self, f: F) {
-        let _ = self.tx.send(Request::SuspendAndRun(Box::new(f)));
+        self.tx.send(Request::SuspendAndRun(Box::new(f)))
+            .expect("Liso output has stopped");
     }
     /// Make a separate `Output` that can also output to the terminal. The
     /// clone and the original can be stored in separate places, even in
@@ -1056,7 +1063,7 @@ impl Common {
 impl Drop for InputOutput {
     fn drop(&mut self) {
         self.actually_blocking_die();
-        let _ = LISO_IS_ACTIVE.compare_exchange(true, false, Ordering::Release, Ordering::Relaxed).unwrap();
+        LISO_IS_ACTIVE.store(false, Ordering::Release);
     }
 }
 
@@ -1096,8 +1103,7 @@ impl InputOutput {
     /// some reason.
     ///
     /// If `Output`s cloned from this `InputOutput` exist, they will be "dead";
-    /// calling their methods won't panic, but it won't do anything else
-    /// either.
+    /// calling their methods will panic!
     pub async fn die(mut self) {
         if self.common.tx.send(Request::Die).is_err() {
             // already dead!
@@ -1126,6 +1132,9 @@ impl InputOutput {
     /// and otherwise clean up everything we've done to the terminal. This will
     /// happen automatically when this `InputOutput` instance is dropped, so
     /// you probably don't need to call this manually.
+    ///
+    /// If `Output`s cloned from this `InputOutput` exist, they will be "dead";
+    /// calling their methods will panic!
     pub fn blocking_die(mut self) {
         self.actually_blocking_die()
     }
