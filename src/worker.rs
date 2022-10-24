@@ -402,7 +402,7 @@ impl TtyState {
                   request: Request)
     -> LifeOrDeath {
         match request {
-            Request::Output(line) => {
+            Request::Output(line) | Request::OutputEcho(line) => {
                 self.rollin()?;
                 self.output_line(&line)?;
                 self.term.borrow_mut().reset_attrs()?;

@@ -619,6 +619,8 @@ enum Request {
     /// Sent by `wrapln`
     #[cfg(feature="wrap")]
     OutputWrapped(Line),
+    /// Sent by `echoln`
+    OutputEcho(Line),
     /// Sent by `status`
     Status(Option<Line>),
     /// Sent by `notice`
@@ -760,6 +762,13 @@ impl Sender {
     pub fn wrapln<T>(&self, line: T)
     where T: Into<Line> {
         let _ = self.tx.send(Request::OutputWrapped(line.into()));
+    }
+    /// Prints a (possibly styled) line of regular output to the screen, but
+    /// only if we are being run interactively. Use this to echo commands
+    /// entered by the user.
+    pub fn echoln<T>(&self, line: T)
+    where T: Into<Line> {
+        let _ = self.tx.send(Request::OutputEcho(line.into()));
     }
     /// Sets the status line to the given (possibly styled) text.
     pub fn status<T>(&self, line: Option<T>)
