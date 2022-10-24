@@ -187,9 +187,9 @@ impl TtyState {
                    lc: LineChar,
                    cur_column: &mut u32, cur_breaks: &mut u32)
         -> LifeOrDeath {
-        if (lc.style, lc.fg, lc.fg) != *cur_attr {
+        if (lc.style, lc.fg, lc.bg) != *cur_attr {
             term.set_attrs(lc.style, lc.fg, lc.bg)?;
-            *cur_attr = (lc.style, lc.fg, lc.fg);
+            *cur_attr = (lc.style, lc.fg, lc.bg);
         }
         let ch = lc.ch;
         let char_width
@@ -271,7 +271,7 @@ impl TtyState {
         let mut cur_attr = (Style::empty(), None, None);
         let mut cur_column = 0;
         let mut cur_breaks = 0;
-        let mut endfill_redundant = self.remembered_output.is_some();
+        let mut endfill_redundant = false;
         let mut output_cursor_top = None;
         let mut output_cursor_left = None;
         let ended_simultaneously = loop {
@@ -293,6 +293,7 @@ impl TtyState {
                     if (a.ch == '\n') != (b.ch == '\n') {
                         // Simpler at this point just to clear everything.
                         term.clear_forward_and_reset()?;
+                        cur_attr = (Style::empty(), None, None);
                         old_chars = None;
                     }
                     self.output_char(&mut term, term_width, &mut cur_attr,
@@ -323,9 +324,8 @@ impl TtyState {
                                                &mut real_breaks,
                                                cur_column, cur_breaks)?;
                         term.clear_forward_and_reset()?;
+                        endfill_redundant = false;
                     }
-                    // let endfill_redundant keep the value it had for the last
-                    // outputted char
                     break a.is_none();
                 },
             }
@@ -347,7 +347,7 @@ impl TtyState {
         self.maybe_report(new_line.text.len(), cur_column, cur_breaks,
             cursor_pos, &mut output_cursor_left,
             &mut output_cursor_top, term_width);
-        if !ended_simultaneously && !endfill_redundant {
+        if !ended_simultaneously || !endfill_redundant {
             let trailit = endfill && match new_line.elements.last() {
                 None => false,
                 Some(el) => el.style.contains(Style::INVERSE)
@@ -360,6 +360,8 @@ impl TtyState {
                                             &mut real_column,
                                             &mut real_breaks,
                                             cur_column, cur_breaks)?;
+                    let last = new_line.elements.last().unwrap();
+                    term.set_attrs(last.style, last.fg, last.bg)?;
                     term.print_spaces((term_width - cur_column) as usize)?;
                     cur_column = term_width;
                     real_column = cur_column;
