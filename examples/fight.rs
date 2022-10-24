@@ -65,7 +65,7 @@ impl Fight {
                 Response::Dead => panic!("Liso died!"),
                 Response::Quit => return,
                 Response::Input(wat) => {
-                    self.io.echoln(liso![fg=green,"> ",fg=none,&wat]);
+                    self.io.echoln(liso![dim,fg=green,"> ",fg=none,&wat]);
                     if wat == "a" || wat == "attack" {
                         self.mhp -= PLAYER_ATTACK_DAMAGE;
                         self.io.wrapln(liso![
