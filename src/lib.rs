@@ -242,6 +242,9 @@ bitflags! {
         /// assert_eq!(liso!("Type \x03 to quit."),
         ///            liso!("Type ", ^inverse, "^C", ^inverse, " to quit."));
         const INVERSE = 1 << 3;
+        /// An alias for [`INVERSE`](#associatedconstant.INVERSE).
+        #[doc(alias="INVERSE")]
+        const REVERSE = 1 << 3;
     }
 }
 
@@ -1225,6 +1228,10 @@ macro_rules! liso_add {
         $line.set_style($crate::Style::INVERSE);
         $crate::liso_add!($line, $($rest)*);
     };
+    ($line:ident, reverse $($rest:tt)*) => {
+        $line.set_style($crate::Style::INVERSE);
+        $crate::liso_add!($line, $($rest)*);
+    };
     // ADD styles
     // `+` (`bold` | `dim` | `underline` | `inverse`)
     ($line:ident, +bold $($rest:tt)*) => {
@@ -1240,6 +1247,10 @@ macro_rules! liso_add {
         $crate::liso_add!($line, $($rest)*);
     };
     ($line:ident, +inverse $($rest:tt)*) => {
+        $line.activate_style($crate::Style::INVERSE);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, +reverse $($rest:tt)*) => {
         $line.activate_style($crate::Style::INVERSE);
         $crate::liso_add!($line, $($rest)*);
     };
@@ -1261,6 +1272,10 @@ macro_rules! liso_add {
         $line.deactivate_style($crate::Style::INVERSE);
         $crate::liso_add!($line, $($rest)*);
     };
+    ($line:ident, -reverse $($rest:tt)*) => {
+        $line.deactivate_style($crate::Style::INVERSE);
+        $crate::liso_add!($line, $($rest)*);
+    };
     // TOGGLE styles
     // `^` (`bold` | `dim` | `underline` | `inverse`)
     ($line:ident, ^bold $($rest:tt)*) => {
@@ -1276,6 +1291,10 @@ macro_rules! liso_add {
         $crate::liso_add!($line, $($rest)*);
     };
     ($line:ident, ^inverse $($rest:tt)*) => {
+        $line.toggle_style($crate::Style::INVERSE);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, ^reverse $($rest:tt)*) => {
         $line.toggle_style($crate::Style::INVERSE);
         $crate::liso_add!($line, $($rest)*);
     };
@@ -1334,7 +1353,7 @@ macro_rules! liso_add {
 ///                  "really", plain, " bad idea!");
 /// ```
 ///
-/// `<style>` may be `bold`, `dim`, `inverse`, `italic`, or `plain`.
+/// `<style>` may be `bold`, `dim`, `inverse`/`reverse`, `italic`, or `plain`.
 /// `<color>` may be the actual name of a [`Color`](enum.Color.html), the
 /// lowercase equivalent, `None`/`none`, or any expression evaluating to an
 /// `Option<Color>`. `<text>` may be anything that you could pass directly to
