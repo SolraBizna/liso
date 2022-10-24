@@ -1036,7 +1036,11 @@ impl Common {
     pub fn clone_output(&self) -> Output {
         Output(Common { tx: self.tx.clone() })
     }
-
+    #[deprecated="Use `clone_output` instead."]
+    #[doc(hidden)]
+    pub fn clone_sender(&self) -> Output {
+        self.clone_output()
+    }
 }
 
 impl Drop for InputOutput {
