@@ -43,6 +43,7 @@ Features that are currently set as prerequisites for a 1.0 release.
 - History
 - Tab completion
 - Windows testing
+- Decide whether to implement a `clear_screen` call (would output a form-feed in pipe mode)
 - Move all the channels into TtyState
 - Optimize, hintify, reversiblize, etc. `LineCharIterator`
 - Clear all TODOs
