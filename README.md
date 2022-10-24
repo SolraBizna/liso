@@ -14,21 +14,23 @@ See [the crate documentation](https://docs.rs/liso/latest/liso/) for more inform
 
 Liso provides line editing based on a commonly-used subset of the default GNU Readline bindings:
 
-- **Control-B/F or Left/Right**: Move cursor.
-- **Control-A or Home**: Go to beginning of line.
-- **Control-E or End**: Go to end of line.
-- **Control-W**: Delete leftward from cursor until reaching a `White_Space` character. ("Delete word")
-- **Control-U**: Delete the whole input.
-- **Control-K**: Delete everything to the right of the cursor.
-- **Control-L**: Clear the display.
-- **Control-C**: Send `Quit`.
-- **Control-D**: Clear the input if there is any, or send `Finish` otherwise.
-- **Control-T**: Send `Info`.
-- **Control-\\ or Break**: Send `Break`.
 - **Escape**: Send `Escape`.
-- **Control-X**: Send `Swap`.
 - **Return (control-M) or Enter (control-J)**: Send the current line of input.
+- **Control-A or Home**: Go to beginning of line.
+- **Control-B/F or Left/Right**: Move cursor.
+- **Control-C**: Send `Quit`.
+- **Control-D**: Discard the input if there is any, or send `Finish` otherwise.
+- **Control-E or End**: Go to end of line.
+- **Control-G**: Discard the input if there is any, leaving feedback of the aborted entry.
+- **Control-K**: Cut (**k**ill) everything after the cursor.
+- **Control-L**: Clear the display.
+- **Control-T**: Send `Info`.
+- **Control-U**: Cut (kill) everything before the cursor.
+- **Control-W**: Delete leftward from cursor until reaching a `White_Space` character. ("Delete **w**ord")
+- **Control-X**: Send `Swap`.
+- **Control-Y**: Paste (**y**ank) the last text that was cut.
 - **Control-Z**: (UNIX only) Gracefully suspend ourselves, awaiting resumption by our parent shell.
+- **Control-\\ or Break**: Send `Break`.
 
 More bindings may be added in the future, and some of these are subject to change before 1.0.
 
@@ -38,7 +40,6 @@ More bindings may be added in the future, and some of these are subject to chang
 
 Features that are currently set as prerequisites for a 1.0 release.
 
-- Control-G on input
 - History
 - Tab completion
 - Windows testing

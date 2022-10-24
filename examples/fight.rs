@@ -115,6 +115,9 @@ impl Fight {
                                           'potion'.");
                     }
                 },
+                Response::Discarded(wat) => {
+                    self.io.echoln(liso![bold+dim,"X ",-bold,wat]);
+                },
                 other => {
                     self.io.notice(format!("unknown key {}",
                                            other.as_unknown() as char),

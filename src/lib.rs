@@ -802,6 +802,9 @@ enum Request {
 ///       _ => io.println("何って？"),
 ///     }
 ///   },
+///   Response::Discarded(line) => {
+///     io.echoln(liso!(bold+dim, "X ", -bold, line));
+///   },
 ///   Response::Dead => return,
 ///   Response::Quit => break,
 ///   // (handle any other variants you want)
@@ -843,6 +846,11 @@ pub enum Response {
     /// Sent when the user types control-C, which normally means they want your
     /// program to quit.
     Quit,
+    /// Sent when the user types control-G, discarding their current input. The
+    /// passed string is what the state of their input was when they hit
+    /// control-G. You should pass this to `echoln`, along with some kind of
+    /// feedback that the input was discarded.
+    Discarded(String),
     /// Sent when the user types control-D on an empty line, which normally
     /// means that they are done providing input (possibly temporarily).
     Finish,
@@ -878,6 +886,7 @@ impl Response {
     pub fn as_unknown(&self) -> u8 {
         match self {
             &Response::Input(_) => 10,
+            &Response::Discarded(_) => 7,
             &Response::Quit => 3,
             &Response::Finish => 4,
             &Response::Info => 20,

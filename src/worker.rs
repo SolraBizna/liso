@@ -69,6 +69,7 @@ struct TtyState {
     prompt: Option<Line>,
     notice: Option<(Line, Instant)>,
     input: String,
+    clipboard: String,
     input_cursor: usize,
     input_allowed: bool,
     remembered_output: Option<RememberedOutput>,
@@ -562,10 +563,14 @@ impl TtyState {
         }
         Ok(())
     }
-    fn handle_cancel(&mut self)
+    fn handle_discard(&mut self, tx: &mut tokio_mpsc::UnboundedSender<Response>)
         -> LifeOrDeath {
         self.dismiss_notice()?;
-        if !self.input.is_empty() {
+        let mut input = String::new();
+        swap(&mut input, &mut self.input);
+        let was_empty = input.is_empty();
+        tx.send(Response::Discarded(input))?;
+        if !was_empty {
             self.rollout_needed = true;
             self.input.clear();
             self.input_cursor = 0;
@@ -587,8 +592,28 @@ impl TtyState {
         self.dismiss_notice()?;
         if self.input_cursor < self.input.len() {
             self.rollout_needed = true;
+            self.clipboard = self.input[self.input_cursor..].to_string();
             self.input.replace_range(self.input_cursor.., "");
         }
+        Ok(())
+    }
+    fn handle_kill_to_start(&mut self)
+        -> LifeOrDeath {
+        self.dismiss_notice()?;
+        if self.input_cursor > 0 {
+            self.rollout_needed = true;
+            self.clipboard = self.input[..self.input_cursor].to_string();
+            self.input.replace_range(..self.input_cursor, "");
+            self.input_cursor = 0;
+        }
+        Ok(())
+    }
+    fn handle_yank(&mut self)
+        -> LifeOrDeath {
+        self.dismiss_notice()?;
+        self.rollout_needed = true;
+        self.input.replace_range(self.input_cursor..self.input_cursor, &self.clipboard);
+        self.input_cursor += self.clipboard.len();
         Ok(())
     }
     fn handle_delete_back(&mut self)
@@ -686,49 +711,22 @@ impl TtyState {
             match ch {
                 // Control-A (go to beginning of line)
                 '\u{0001}' => self.handle_home()?,
-                // Control-E (go to end of line)
-                '\u{0005}' => self.handle_end()?,
                 // Control-B (backward one char)
                 '\u{0002}' => self.handle_left_arrow()?,
+                // Control-C
+                '\u{0003}' => tx.send(Response::Quit)?,
+                // Control-D
+                '\u{0004}' => self.handle_finish(tx)?,
+                // Control-E (go to end of line)
+                '\u{0005}' => self.handle_end()?,
                 // Control-F (forward one char)
                 '\u{0006}' => self.handle_right_arrow()?,
-                // Control-U (cancel input)
-                '\u{0015}' => self.handle_cancel()?,
-                // Control-K (kill line)
+                // Control-G (discard input)
+                '\u{0007}' => self.handle_discard(tx)?,
+                // Control-K (kill line after cursor)
                 '\u{000B}' => self.handle_kill_to_end()?,
                 // Control-L (clear screen)
                 '\u{000C}' => self.handle_clear()?,
-                // Control-W (erase word)
-                '\u{0017}' => self.handle_delete_word()?,
-                // Tab
-                '\t' => {
-                    // TODO completion
-                },
-                // Control-C
-                '\u{0003}' => {
-                    tx.send(Response::Quit)?;
-                },
-                // Control-D
-                '\u{0004}' => self.handle_finish(tx)?,
-                // Control-T
-                '\u{0014}' => {
-                    tx.send(Response::Info)?;
-                },
-                #[cfg(unix)]
-                // Control-Z
-                '\u{001A}' => self.handle_suspend()?,
-                // Escape
-                '\u{001B}' => {
-                    tx.send(Response::Escape)?;
-                },
-                // Break (control-backslash)
-                '\u{001C}' => {
-                    tx.send(Response::Break)?;
-                },
-                // Control-X
-                '\u{0018}' => {
-                    tx.send(Response::Swap)?;
-                },
                 // Control-N (history next)
                 '\u{000E}' => {
                     // TODO: history
@@ -736,6 +734,31 @@ impl TtyState {
                 // Control-P (history previous)
                 '\u{0010}' => {
                     // TODO: history
+                },
+                // Control-T
+                '\u{0014}' => tx.send(Response::Info)?,
+                // Control-U (kill line before cursor)
+                '\u{0015}' => self.handle_kill_to_start()?,
+                // Control-W (erase word)
+                '\u{0017}' => self.handle_delete_word()?,
+                // Control-X
+                '\u{0018}' => tx.send(Response::Swap)?,
+                // Control-Y (yank)
+                '\u{0019}' => self.handle_yank()?,
+                #[cfg(unix)]
+                // Control-Z
+                '\u{001A}' => self.handle_suspend()?,
+                // Tab
+                '\t' => {
+                    // TODO completion
+                },
+                // Escape
+                '\u{001B}' => {
+                    tx.send(Response::Escape)?;
+                },
+                // Break (control-backslash)
+                '\u{001C}' => {
+                    tx.send(Response::Break)?;
                 },
                 // Enter/return
                 '\n' | '\r' => self.handle_return(tx)?,
@@ -764,56 +787,23 @@ impl TtyState {
                 if k.modifiers.contains(KeyModifiers::CONTROL) {
                     match k.code {
                         // Control-A (go to beginning of line)
-                        KeyCode::Char('a')
-                            => self.handle_home()?,
-                        // Control-E (go to end of line)
-                        KeyCode::Char('e')
-                            => self.handle_end()?,
+                        KeyCode::Char('a') => self.handle_home()?,
                         // Control-B (backward one char)
-                        KeyCode::Char('b')
-                            => self.handle_left_arrow()?,
-                        // Control-F (forward one char)
-                        KeyCode::Char('f')
-                            => self.handle_right_arrow()?,
-                        // Control-U (cancel input)
-                        KeyCode::Char('u')
-                            => self.handle_cancel()?,
-                        // Control-K (kill line)
-                        KeyCode::Char('k')
-                            => self.handle_kill_to_end()?,
-                        // Control-L (clear screen)
-                        KeyCode::Char('l')
-                            => self.handle_clear()?,
-                        // Control-W (erase word)
-                        KeyCode::Char('w')
-                            => self.handle_delete_word()?,
+                        KeyCode::Char('b') => self.handle_left_arrow()?,
                         // Control-C
-                        KeyCode::Char('c') => {
-                            tx.send(Response::Quit)?;
-                        },
+                        KeyCode::Char('c') =>tx.send(Response::Quit)?,
                         // Control-D
-                        KeyCode::Char('d')
-                            => self.handle_finish(tx)?,
-                        // Control-T
-                        KeyCode::Char('t') => {
-                            tx.send(Response::Info)?;
-                        },
-                        #[cfg(unix)]
-                        // Control-Z
-                        KeyCode::Char('z')
-                            => self.handle_suspend()?,
-                        // Control-I (Tab)
-                        KeyCode::Char('i') => {
-                            // TODO completion
-                        },
-                        // Break (control-backslash)
-                        KeyCode::Char('\\') => {
-                            tx.send(Response::Break)?;
-                        },
-                        // Control-X
-                        KeyCode::Char('x') => {
-                            tx.send(Response::Swap)?;
-                        },
+                        KeyCode::Char('d') => self.handle_finish(tx)?,
+                        // Control-E (go to end of line)
+                        KeyCode::Char('e') => self.handle_end()?,
+                        // Control-F (forward one char)
+                        KeyCode::Char('f') => self.handle_right_arrow()?,
+                        // Control-G (discard input)
+                        KeyCode::Char('g') => self.handle_discard(tx)?,
+                        // Control-K (kill line after cursor)
+                        KeyCode::Char('k') => self.handle_kill_to_end()?,
+                        // Control-L (clear screen)
+                        KeyCode::Char('l') => self.handle_clear()?,
                         // Control-N (history next)
                         KeyCode::Char('n') => {
                             // TODO: history
@@ -822,7 +812,28 @@ impl TtyState {
                         KeyCode::Char('p') => {
                             // TODO: history
                         },
-                        // Control-J/Control-M
+                        // Control-T
+                        KeyCode::Char('t') =>tx.send(Response::Info)?,
+                        // Control-U (kill line before cursor)
+                        KeyCode::Char('u') => self.handle_kill_to_start()?,
+                        // Control-W (erase word)
+                        KeyCode::Char('w') => self.handle_delete_word()?,
+                        // Control-X
+                        KeyCode::Char('x') =>tx.send(Response::Swap)?,
+                        // Control-Y (yank)
+                        KeyCode::Char('y') => self.handle_yank()?,
+                        #[cfg(unix)]
+                        // Control-Z
+                        KeyCode::Char('z') => self.handle_suspend()?,
+                        // Break (control-backslash)
+                        KeyCode::Char('\\') => {
+                            tx.send(Response::Break)?;
+                        },
+                        // Control-I (Tab)
+                        KeyCode::Char('i') => {
+                            // TODO completion
+                        },
+                        // Control-J/Control-M = return
                         KeyCode::Char('j') | KeyCode::Char('m')
                             => self.handle_return(tx)?,
                         // Unknown control character
@@ -985,6 +996,7 @@ fn tty_worker(req_tx: std_mpsc::Sender<Request>,
         status: None, prompt: None, notice: None, remembered_output: None,
         input_allowed: true, input: String::new(), input_cursor: 0,
         term: RefCell::new(term), rollout_needed: false,
+        clipboard: String::new(),
     };
     'outer: while let Ok(request) = rx.recv() {
         if let Request::Die = request { break }
