@@ -68,6 +68,7 @@
 use std::{
     borrow::Cow,
     time::{Duration, Instant},
+    sync::atomic::{AtomicBool, Ordering},
     sync::mpsc as std_mpsc,
 };
 
@@ -1054,7 +1055,8 @@ impl Common {
 
 impl Drop for InputOutput {
     fn drop(&mut self) {
-        self.actually_blocking_die()
+        self.actually_blocking_die();
+        let _ = LISO_IS_ACTIVE.compare_exchange(true, false, Ordering::Release, Ordering::Relaxed).unwrap();
     }
 }
 
@@ -1065,6 +1067,13 @@ impl core::ops::Deref for InputOutput {
 
 impl InputOutput {
     pub fn new() -> InputOutput {
+        match LISO_IS_ACTIVE.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed) {
+            Ok(_) => (),
+            Err(_) => {
+                panic!("Tried to have multiple `liso::InputOutput` instances \
+                        active at the same time!")
+            },
+        }
         let (request_tx, request_rx) = std_mpsc::channel();
         let (response_tx, response_rx) = tokio_mpsc::unbounded_channel();
         let request_tx_clone = request_tx.clone();
@@ -1685,3 +1694,6 @@ pub type IO = InputOutput;
 #[deprecated="This type was renamed to Output to improve clarity."]
 #[doc(hidden)]
 pub type Sender = Output;
+
+/// Used to prevent multiple Liso instances from being active at once.
+static LISO_IS_ACTIVE: AtomicBool = AtomicBool::new(false);
