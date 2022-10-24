@@ -2,7 +2,7 @@ Liso (LEE-soh) is an acronym for Line Input with Simultaneous Output. It is a li
 
 It should work anywhere [Crossterm](https://crates.io/crates/crossterm) does:
 
-- Windows 7 or later
+- Windows 7 or later (completely untested)
 - On UNIX, any system with an ANSI-compatible terminal (via crossterm) or a
   VT52-compatible terminal (via custom support).
 
