@@ -962,7 +962,7 @@ fn tty_worker(req_tx: std_mpsc::Sender<Request>,
     let term = new_term(&req_tx)?;
     let mut state = TtyState {
         status: None, prompt: None, notice: None, remembered_output: None,
-        input_allowed: false, input: String::new(), input_cursor: 0,
+        input_allowed: true, input: String::new(), input_cursor: 0,
         term: RefCell::new(term), rollout_needed: false,
     };
     'outer: while let Ok(request) = rx.recv() {
