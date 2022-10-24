@@ -34,11 +34,10 @@ More bindings may be added in the future, and some of these are subject to chang
 
 # Future
 
-## TODO
+## Release blockers
 
 Features that are currently set as prerequisites for a 1.0 release.
 
-- Control-V on input
 - Control-G on input
 - History
 - Tab completion
@@ -46,7 +45,13 @@ Features that are currently set as prerequisites for a 1.0 release.
 - Document the VT52 support
 - Move all the channels into TtyState
 - Optimize, hintify, reversiblize, etc. `LineCharIterator`
-- `read` regularization (`read_async`, `read_blocking`?)
+- Clear all TODOs
+
+## TODO, eventually
+
+Features that are still planned, but won't block 1.0.
+
+- Control-V on input
 
 ## Deferred features
 

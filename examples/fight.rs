@@ -61,7 +61,7 @@ impl Fight {
             self.io.prompt(liso![
                 "What will you do?\n", fg = green, "> ", fg = None
             ], true, false);
-            match self.io.blocking_read() {
+            match self.io.read_blocking() {
                 Response::Dead => panic!("Liso died!"),
                 Response::Quit => return,
                 Response::Input(wat) => {

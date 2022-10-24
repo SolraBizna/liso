@@ -772,13 +772,13 @@ enum Request {
 /// Input received from the user, or a special condition. Returned by any of
 /// the following [`InputOutput`](struct.InputOutput.html) methods:
 ///
-/// - [`read`](struct.InputOutput.html#method.read) (asynchronous)
+/// - [`read_async`](struct.InputOutput.html#method.read_async) (asynchronous)
+/// - [`read_blocking`](struct.InputOutput.html#method.read_blocking)
+///   (synchronous, waiting forever)
 /// - [`read_timeout`](struct.InputOutput.html#method.read_timeout)
 ///   (synchronous with timeout)
 /// - [`read_deadline`](struct.InputOutput.html#method.read_deadline)
 ///   (synchronous with deadline)
-/// - [`blocking_read`](struct.InputOutput.html#method.blocking_read)
-///   (synchronous, waiting forever)
 /// - [`try_read`](struct.InputOutput.html#method.try_read)
 ///   (polled)
 ///
@@ -1086,7 +1086,7 @@ impl InputOutput {
             return
         }
         loop {
-            match self.read().await {
+            match self.read_async().await {
                 Response::Dead => break,
                 _ => (),
             }
@@ -1098,7 +1098,7 @@ impl InputOutput {
             return
         }
         loop {
-            match self.blocking_read() {
+            match self.read_blocking() {
                 Response::Dead => break,
                 _ => (),
             }
@@ -1121,22 +1121,27 @@ impl InputOutput {
     /// task until something is received.
     ///
     /// This is an asynchronous function. To read from non-asynchronous code,
-    /// you should use `blocking_read` instead.
+    /// you should use `read_blocking` instead.
     ///
     /// If `Response::Dead` is received too many times, Liso will assume your
     /// program is ignoring it and panic! Avoid this problem by handling
     /// `Response::Dead` correctly.
-    pub async fn read(&mut self) -> Response {
+    pub async fn read_async(&mut self) -> Response {
         match self.rx.recv().await {
             None => { self.report_death(); Response::Dead },
             Some(x) => x,
         }
     }
+    #[deprecated="Use `read_async` instead."]
+    #[doc(hidden)]
+    pub async fn read(&mut self) -> Response {
+        self.read_async().await
+    }
     /// Read a [`Response`](enum.Response.html) from the user, blocking this
     /// thread until the given `timeout` elapses or something is received.
     ///
     /// This is a synchronous function. To achieve the same effect
-    /// asynchronously, you can wrap `read` in `tokio::time::timeout`.
+    /// asynchronously, you can wrap `read_async` in `tokio::time::timeout`.
     ///
     /// If `Response::Dead` is received too many times, Liso will assume your
     /// program is ignoring it and panic! Avoid this problem by handling
@@ -1156,7 +1161,7 @@ impl InputOutput {
     /// thread until the given `deadline` is reached or something is received.
     ///
     /// This is a synchronous function. To achieve the same effect
-    /// asynchronously, you can wrap `read` in `tokio::time::timeout_at`.
+    /// asynchronously, you can wrap `read_async` in `tokio::time::timeout_at`.
     ///
     /// If `Response::Dead` is received too many times, Liso will assume your
     /// program is ignoring it and panic! Avoid this problem by handling
@@ -1176,16 +1181,21 @@ impl InputOutput {
     /// thread until something is received.
     ///
     /// This is a synchronous function. To read from asynchronous code, you
-    /// should use `read` instead.
+    /// should use `read_async` instead.
     ///
     /// If `Response::Dead` is received too many times, Liso will assume your
     /// program is ignoring it and panic! Avoid this problem by handling
     /// `Response::Dead` correctly.
-    pub fn blocking_read(&mut self) -> Response {
+    pub fn read_blocking(&mut self) -> Response {
         match self.rx.blocking_recv() {
             None => { self.report_death(); Response::Dead },
             Some(x) => x,
         }
+    }
+    #[deprecated="Use `read_blocking` instead."]
+    #[doc(hidden)]
+    pub fn blocking_read(&mut self) -> Response {
+        self.read_blocking()
     }
     /// Read a [`Response`](enum.Response.html) from the user, if one is
     /// available. If no inputs are currently available, return immediately
