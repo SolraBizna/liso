@@ -714,10 +714,9 @@ impl TtyState {
                 '\u{0014}' => {
                     tx.send(Response::Info)?;
                 },
+                #[cfg(unix)]
                 // Control-Z
-                '\u{001A}' => {
-                    tx.send(Response::Suspend)?;
-                },
+                '\u{001A}' => self.handle_suspend()?,
                 // Escape
                 '\u{001B}' => {
                     tx.send(Response::Escape)?;
@@ -799,10 +798,10 @@ impl TtyState {
                         KeyCode::Char('t') => {
                             tx.send(Response::Info)?;
                         },
+                        #[cfg(unix)]
                         // Control-Z
-                        KeyCode::Char('z') => {
-                            tx.send(Response::Suspend)?;
-                        },
+                        KeyCode::Char('z')
+                            => self.handle_suspend()?,
                         // Control-I (Tab)
                         KeyCode::Char('i') => {
                             // TODO completion
@@ -870,6 +869,19 @@ impl TtyState {
                 }
             }
         }
+        Ok(())
+    }
+    #[cfg(unix)]
+    fn handle_suspend(&mut self) -> LifeOrDeath {
+        self.rollout()?;
+        self.remembered_output = None;
+        let mut term = self.term.borrow_mut();
+        term.set_attrs(Style::PLAIN, None, None)?;
+        term.suspend()?;
+        println!("^Z");
+        unix_util::sigstop_ourselves();
+        term.unsuspend()?;
+        self.rollout_needed = true;
         Ok(())
     }
     pub fn rollin(&mut self) -> LifeOrDeath {

@@ -82,6 +82,7 @@ use tokio::sync::mpsc as tokio_mpsc;
 mod worker;
 mod term;
 use term::*;
+#[cfg(unix)] mod unix_util;
 
 /// When handling input ourselves, this is the amount of time to wait after
 /// receiving an escape before we're sure we don't have an escape sequence on
@@ -682,9 +683,6 @@ pub enum Response {
     /// Sent when the user types control-C, which normally means they want your
     /// program to quit.
     Quit,
-    /// Sent when the user types control-Z, which normally means they want your
-    /// program to suspend itself.
-    Suspend,
     /// Sent when the user types control-D on an empty line, which normally
     /// means that they are done providing input (possibly temporarily).
     Finish,
@@ -741,7 +739,6 @@ impl Response {
         match self {
             &Response::Input(_) => 10,
             &Response::Quit => 3,
-            &Response::Suspend => 26,
             &Response::Finish => 4,
             &Response::Info => 20,
             &Response::Dead | &Response::Break => 28,

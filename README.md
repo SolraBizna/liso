@@ -22,18 +22,19 @@ Liso provides line editing based on a commonly-used subset of the default GNU Re
 - **Control-K**: Delete everything to the right of the cursor.
 - **Control-L**: Clear the display.
 - **Control-C**: Send `Quit`.
-- **Control-Z**: Send `Suspend`.
 - **Control-D**: Clear the input if there is any, or send `Finish` otherwise.
 - **Control-T**: Send `Info`.
 - **Control-\\ or Break**: Send `Break`.
 - **Escape**: Send `Escape`.
 - **Control-X**: Send `Swap`.
 - **Return (control-M) or Enter (control-J)**: Send the current line of input.
+- **Control-Z**: (UNIX only) Gracefully suspend ourselves, awaiting resumption by our parent shell.
 
 More bindings may be added in the future, and some of these are subject to change before 1.0.
 
 # TODO
 
+- Control-V on input
 - Control-S/-Q on input
 - Squelch output feature (with mandatory status line, related to above)
 - Control-G on input
