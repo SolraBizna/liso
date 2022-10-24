@@ -133,7 +133,7 @@ impl From<std_mpsc::RecvTimeoutError> for DummyError {
 /// - Some terminals don't support color at all.
 /// - Some terminals support color, but not all the ANSI colors. (e.g. the
 ///   Atari ST's VT52 emulator in medium-res mode, which supports white, black,
-///   red, and green.)
+///   red, green, and none of the other colors.)
 /// - Some users will be using unexpected themes. White on black, black on
 ///   white, green on black, yellow on orange, and "Solarized" are all common.
 /// - Many users have some form of colorblindness. The most common form,
@@ -143,26 +143,39 @@ impl From<std_mpsc::RecvTimeoutError> for DummyError {
 /// 
 /// And some guidelines to adhere to:
 /// 
+/// - Never assume you know what color `None` is. It could be white, black, or
+///   something entirely unexpected.
 /// - Never specify a foreground color of `White` or `Black` without also
 ///   specifying a background color, or vice versa.
+/// - Never specify the same color for both foreground and background at the
+///   same time.
 /// - Instead of setting white-on-black or black-on-white, consider using
 ///   [inverse video](struct.Style.html#associatedconstant.INVERSE) to achieve
 ///   your goal instead.
 #[derive(Clone,Copy,Debug,Eq,PartialEq)]
 #[repr(u8)]
 pub enum Color {
+    /// Absence of light. The color of space. (Some terminals will render this
+    /// as a dark gray instead.)
     Black=0,
+    /// The color of blood, danger, and rage.
     Red=1,
+    /// The color of plants, safety, and circadian stasis.
     Green=2,
+    /// The color of all the worst chemicals.
     Yellow=3,
+    /// The color of a calm ocean.
     Blue=4,
+    /// The color of a clear sky.
     Cyan=5,
+    /// A color that occurs rarely in nature, but often in screenshots of GEM.
     Magenta=6,
+    /// A (roughly) equal mix of all wavelengths of light.
     White=7,
 }
 
 impl Color {
-    // Convert to a Crossterm color
+    // Convert to the equivalent Crossterm color.
     fn to_crossterm(self) -> CtColor {
         match self {
             Color::Black => CtColor::Black,
@@ -175,7 +188,7 @@ impl Color {
             Color::White => CtColor::Grey,
         }
     }
-    // Convert to an Atari ST 16-color color index (bright)
+    // Convert to an Atari ST 16-color palette index (bright).
     fn to_atari16_bright(self) -> u8 {
         match self {
             Color::Black => 8,
@@ -188,7 +201,7 @@ impl Color {
             Color::White => 0,
         }
     }
-    // Convert to an Atari ST 16-color color index (dim)
+    // Convert to an Atari ST 16-color palette index (dim).
     fn to_atari16_dim(self) -> u8 {
         match self {
             Color::Black => 15,
@@ -201,7 +214,7 @@ impl Color {
             Color::White => 7,
         }
     }
-    // Convert to an Atari ST 4-color color index
+    // Convert to the nearest Atari ST 4-color palette index.
     fn to_atari4(self) -> u8 {
         match self {
             Color::Black => 15,
@@ -234,16 +247,19 @@ bitflags! {
         /// Prints with a line under the baseline.
         const UNDERLINE = 1 << 2;
         /// Prints with the foreground and background colors reversed. (Some
-        /// terminals that don't support color do support this.)
+        /// terminals that don't support color *do* support this.)
         ///
-        /// Liso toggles this whenever it's outputting a control sequence:
+        /// Liso toggles this whenever a control sequence is inserted into a
+        /// [`Line`](struct.Line.html):
         ///
         /// ```rust
         /// # use liso::liso;
         /// assert_eq!(liso!("Type \x03 to quit."),
         ///            liso!("Type ", ^inverse, "^C", ^inverse, " to quit."));
         const INVERSE = 1 << 3;
-        /// An alias for [`INVERSE`](#associatedconstant.INVERSE).
+        /// An alias for [`INVERSE`](#associatedconstant.INVERSE). I prefer to
+        /// use the term "inverse video" rather than "reverse video", as the
+        /// latter might be confused for some kind of "mirrored video" feature.
         #[doc(alias="INVERSE")]
         const REVERSE = 1 << 3;
     }
@@ -260,19 +276,17 @@ impl Style {
     }
 }
 
-/// This is a common struct encapsulated by both the
+/// This struct contains all the methods that the
 /// [`Output`](struct.Output.html) and [`InputOutput`](struct.InputOutput.html)
-/// structs.
+/// structs have in common. Any method of this struct may be called on either
+/// of the other structs.
 pub struct Common {
     tx: std_mpsc::Sender<Request>,
 }
 
 /// Sends output to the terminal. You can have more than one of these, shared
-/// freely among threads and tasks. Give one to every thread that needs to
-/// produce output.
-///
-/// Every method available on [`Common`](struct.Common.html) is also available
-/// on `Output`.
+/// freely among threads and tasks. Give one to every thread, task, or object
+/// that needs to produce output.
 pub struct Output(Common);
 
 /// Receives input from, and sends output to, the terminal. You can *send
@@ -280,9 +294,6 @@ pub struct Output(Common);
 /// (see [`Common::clone_output`](struct.Common.html#method.clone_output)), but
 /// only one thread at a time may have ownership of the overlying `InputOutput`
 /// type and therefore the ability to *receive input*.
-///
-/// Every method available on [`Common`](struct.Common.html) is also available
-/// on `InputOutput`.
 pub struct InputOutput {
     common: Common,
     rx: tokio_mpsc::UnboundedReceiver<Response>,
@@ -308,8 +319,9 @@ struct LineElement {
 }
 
 /// This is a line of text, with optional styling information, ready for
-/// display. The [`liso!` macro](macro.liso.html) is extremely convenient for
-/// building these.
+/// display. The [`liso!`](macro.liso.html) macro is extremely convenient for
+/// building these. You can also pass a `String`, `&str`, or `Cow<str>` to
+/// most Liso functions that accept a `Line`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Line {
     text: String,
@@ -371,7 +383,18 @@ impl Line {
             endut.end = end;
         }
     }
-    /// Adds additional text to the `Line` using the current styling.
+    /// Adds additional text to the `Line` using the currently-active
+    /// [`Style`][1] and [`Color`][2]s..
+    ///
+    /// You may pass a `String`, `&str`, or `Cow<str>` here, but not a `Line`.
+    /// If you want to append styled text, see [`append_line`][3]. If you want
+    /// to append the text from a `Line` but discard its style information,
+    /// call [`as_str`][4] on that `Line`.
+    ///
+    /// [1]: struct.Style.html
+    /// [2]: enum.Color.html
+    /// [3]: #method.append_line
+    /// [4]: #method.as_str
     pub fn add_text<'a, T>(&mut self, i: T) -> &mut Line
     where T: Into<Cow<'a, str>> {
         let i: Cow<str> = i.into();
@@ -421,14 +444,18 @@ impl Line {
         }
         self
     }
-    /// Returns the Style in effect at the end of the line, as it exists now.
+    /// Returns the currently active [`Style`][1].
+    ///
+    /// [1]: struct.Style.html
     pub fn get_style(&self) -> Style {
         match self.elements.last() {
             None => Style::PLAIN,
             Some(x) => x.style,
         }
     }
-    /// Change the active Style to exactly those given.
+    /// Change the active [`Style`][1] to exactly that given.
+    ///
+    /// [1]: struct.Style.html
     pub fn set_style(&mut self, nu: Style) -> &mut Line {
         let (fg, bg) = match self.elements.last_mut() {
             // case 1: no elements yet, make one.
@@ -452,46 +479,64 @@ impl Line {
         });
         self
     }
-    /// Toggle the given Styles. For every style passed in, if it is set, it
-    /// will be unset, and vice versa.
+    /// Toggle every given [`Style`][1].
+    ///
+    /// [1]: struct.Style.html
     pub fn toggle_style(&mut self, nu: Style) -> &mut Line {
         let old = self.get_style();
         self.set_style(old ^ nu)
     }
-    /// Activate the given Styles.
+    /// Activate the given [`Style`][1]s, leaving any already-active `Style`s
+    /// active.
+    ///
+    /// [1]: struct.Style.html
     pub fn activate_style(&mut self, nu: Style) -> &mut Line {
         let old = self.get_style();
         self.set_style(old | nu)
     }
-    /// Deactivate the given Styles.
+    /// Deactivate the given [`Style`][1]s, without touching any unmentioned
+    /// `Style`s that were already active.
+    ///
+    /// [1]: struct.Style.html
     pub fn deactivate_style(&mut self, nu: Style) -> &mut Line {
         let old = self.get_style();
         self.set_style(old - nu)
     }
-    /// Deactivate all Styles. Same as calling `set_style(Style::PLAIN)`.
+    /// Deactivate *all* [`Style`][1]s. Same as calling
+    /// `set_style(Style::PLAIN)`.
+    ///
+    /// [1]: struct.Style.html
     pub fn clear_style(&mut self) -> &mut Line {
         self.set_style(Style::PLAIN)
     }
-    /// Gets the current colors, foreground and background.
+    /// Gets the current [`Color`][1]s, both foreground and background.
+    ///
+    /// [1]: enum.Color.html
     pub fn get_colors(&self) -> (Option<Color>, Option<Color>) {
         match self.elements.last() {
             None => (None, None),
             Some(x) => (x.fg, x.bg),
         }
     }
-    /// Sets the foreground color.
+    /// Sets the foreground [`Color`][1].
+    ///
+    /// [1]: enum.Color.html
     pub fn set_fg_color(&mut self, nu: Option<Color>) -> &mut Line {
         let (fg, bg) = self.get_colors();
         if nu != fg { self.set_colors(nu, bg); }
         self
     }
-    /// Sets the background color.
+    /// Sets the background [`Color`][1].
+    ///
+    /// [1]: enum.Color.html
     pub fn set_bg_color(&mut self, nu: Option<Color>) -> &mut Line {
         let (fg, bg) = self.get_colors();
         if nu != bg { self.set_colors(fg, nu); }
         self
     }
-    /// Sets the foreground and background color.
+    /// Sets both the foreground and background [`Color`][1].
+    ///
+    /// [1]: enum.Color.html
     pub fn set_colors(&mut self, fg: Option<Color>, bg: Option<Color>) -> &mut Line {
         let prev_style = match self.elements.last_mut() {
             // case 1: no elements yet, make one.
@@ -512,30 +557,75 @@ impl Line {
         });
         self
     }
-    /// Reset ALL style and color information to default. Equivalent to calling
-    /// `set_style(Style::PLAIN)` followed by `set_colors(None, None)`.
+    /// Reset ALL [`Style`][1] and [`Color`][2] information to default.
+    /// Equivalent to:
+    ///
+    /// ```
+    /// # use liso::Style;
+    /// # let mut line = liso::Line::new();
+    /// # liso::liso_add!(line, fg=green, bg=red, underline);
+    /// line.set_style(Style::PLAIN).set_colors(None, None);
+    /// # assert_eq!(line, liso::liso!(plain, fg=none, bg=none));
+    /// ```
+    ///
+    /// (In fact, that is the body of this function.)
+    ///
+    /// [1]: struct.Style.html
+    /// [2]: enum.Color.html
     pub fn reset_all(&mut self) -> &mut Line {
         self.set_style(Style::PLAIN).set_colors(None, None)
     }
-    /// Returns true if this line contains no text.
+    /// Returns true if this line contains no text. (It may yet contain some
+    /// [`Style`][1] or [`Color`][2] information.)
+    ///
+    /// [1]: struct.Style.html
+    /// [2]: enum.Color.html
     pub fn is_empty(&self) -> bool { self.text.is_empty() }
     /// Returns the number of **BYTES** of text this line contains.
     pub fn len(&self) -> usize { self.text.len() }
-    /// Iterate over chars of the line, including style information, one char
-    /// at a time.
+    /// Iterate over chars of the line, including [`Style`][1] and [`Color`][2]
+    /// information, one `char` at a time.
+    ///
+    /// The usual caveats about the difference between a `char` and a character
+    /// apply. Unicode etc.
     ///
     /// Yields: `(byte_index, character, style, fgcolor, bgcolor)`
+    ///
+    /// [1]: struct.Style.html
+    /// [2]: enum.Color.html
     pub fn chars(&self) -> LineCharIterator<'_> {
         LineCharIterator::new(self)
     }
-    /// Add a linebreak and then clear style and color.
+    /// Add a linebreak and then clear [`Style`][1] and [`Color`][2]s.
+    ///
+    /// Equivalent to:
+    ///
+    /// ```
+    /// # use liso::Style;
+    /// # let mut line = liso::Line::new();
+    /// # liso::liso_add!(line, fg=green, bg=red, underline);
+    /// line.add_text("\n");
+    /// line.set_style(Style::empty());
+    /// line.set_colors(None, None);
+    /// # assert_eq!(line, liso::liso!(fg=green, bg=red, underline,
+    /// #   "\n", reset));
+    /// ```
+    ///
+    /// (In fact, that is the body of this function.)
+    ///
+    /// [1]: struct.Style.html
+    /// [2]: enum.Color.html
     pub fn reset_and_break(&mut self) {
         self.add_text("\n");
         self.set_style(Style::empty());
         self.set_colors(None, None);
     }
-    /// Append another Line to ourselves, including style information. You may
-    /// want to `reset_and_break` first.
+    /// Append another Line to ourselves, including [`Style`][1] and
+    /// [`Color`][2] information. You may want to [`reset_and_break`][3] first.
+    ///
+    /// [1]: struct.Style.html
+    /// [2]: enum.Color.html
+    /// [3]: #method.reset_and_break
     pub fn append_line(&mut self, other: &Line) {
         for element in other.elements.iter() {
             self.set_style(element.style);
@@ -543,8 +633,15 @@ impl Line {
             self.add_text(&other.text[element.start .. element.end]);
         }
     }
-    /// Insert linebreaks to wrap to the given number of columns. Only
-    /// available with the "wrap" feature, which is enabled by default.
+    /// Insert linebreaks as necessary to make it so that no line within this
+    /// `Line` is wider than the given number of columns. Only available with
+    /// the `wrap` feature, which is enabled by default.
+    ///
+    /// Rather than calling this method yourself, you definitely want to use
+    /// the [`wrapln`](struct.Common.html#method.wrapln) method instead of the
+    /// [`println`](struct.Common.html#method.println) method. That way, Liso
+    /// will automatically wrap the line of text to the correct width for the
+    /// user's terminal.
     #[cfg(feature="wrap")]
     pub fn wrap_to_width(&mut self, width: usize) {
         assert!(width > 0);
@@ -672,28 +769,77 @@ enum Request {
     CrosstermEvent(crossterm::event::Event),
 }
 
-/// Input received from the user, or a special condition.
+/// Input received from the user, or a special condition. Returned by any of
+/// the following [`InputOutput`](struct.InputOutput.html) methods:
+///
+/// - [`read`](struct.InputOutput.html#method.read) (asynchronous)
+/// - [`read_timeout`](struct.InputOutput.html#method.read_timeout)
+///   (synchronous with timeout)
+/// - [`read_deadline`](struct.InputOutput.html#method.read_deadline)
+///   (synchronous with deadline)
+/// - [`blocking_read`](struct.InputOutput.html#method.blocking_read)
+///   (synchronous, waiting forever)
+/// - [`try_read`](struct.InputOutput.html#method.try_read)
+///   (polled)
+///
+/// Example usage:
+///
+/// ```rust
+/// # use liso::{Response, liso};
+/// # use std::time::Duration;
+/// # let mut io = liso::InputOutput::new();
+/// // near the top
+/// io.prompt(liso!(fg=green, bold, "> ", reset), true, false);
+/// // in your main loop
+/// # let response = Response::Input(String::new());
+/// # for _ in 0 .. 1 {
+/// match response {
+///   Response::Input(line) => {
+///     io.echoln(liso!(fg=green, dim, "> ", fg=none, &line));
+///     match line.as_str() {
+///       "hello" => io.println("World!"),
+///       "world" => io.println("Hello!"),
+///       _ => io.println("何って？"),
+///     }
+///   },
+///   Response::Dead => return,
+///   Response::Quit => break,
+///   // (handle any other variants you want)
+///   other => {
+///       io.notice(format!("unknown key {}",
+///                         other.as_unknown() as char),
+///                 Duration::from_secs(1));
+///   },
+/// }
+/// # break;
+/// # }
+/// ```
+///
 /// 
-/// If a control character isn't listed here (e.g. control-C, control-D)
-/// then you can't assume you can receive it. It might have some meaning
-/// to the line editor. (e.g. control-A -> go to beginning of line,
-/// control-E -> go to end of line, control-W -> delete word...)
 #[derive(Debug,PartialEq,Eq,PartialOrd,Ord)]
 #[non_exhaustive]
 pub enum Response {
+    /// Sent when the user finishes entering a line of input. This is the
+    /// entire line. This is the most interesting, and common, variant that
+    /// you will receive.
+    ///
+    /// In case you don't want to do in-depth parsing of the user's input, you
+    /// can match against static string literals with a little work. You may
+    /// also want to use [`echoln`](struct.Common.html#method.echoln) to echo
+    /// the user's input. See the top of this documentation for an example of
+    /// both.
+    Input(String),
     /// Sent when the terminal or the IO thread have died. Once you receive
     /// this once, you will never receive any other `Response` from Liso again.
     /// Your program should exit soon after, or at the very least should close
     /// down that `InputOutput` instance.
     /// 
     /// If your program receives `Response::Dead` on the same `InputOutput`
-    /// instance too many times, Liso will panic. This is to prevent
-    /// poorly-written programs from failing to exit after a hangup condition
-    /// or bug in Liso cut off user input.
+    /// instance too many times, Liso will panic. This is to ensure that even
+    /// a poorly-written program that ignores `Response::Dead` will still exit
+    /// soon after after user input is permanently cut off, whether by a hangup
+    /// condition or by a bug in Liso.
     Dead,
-    /// Sent when the user finishes entering a line of input. This is the
-    /// entire line.
-    Input(String),
     /// Sent when the user types control-C, which normally means they want your
     /// program to quit.
     Quit,
@@ -719,9 +865,8 @@ pub enum Response {
     /// Don't use particular values of `Unknown` for any specific purpose.
     /// Later versions of Liso may add additional `Response` variants for new
     /// control keys, or handle more control keys itself, replacing the
-    /// `Unknown(...)` values those keys used to send. See
-    /// [`as_unknown`](#method.as_unknown) for an example of how this variant
-    /// should be used (i.e. not directly).
+    /// `Unknown(...)` values those keys used to send. See the top of this file
+    /// for an example of how this variant should be used (i.e. not directly).
     Unknown(u8),
 }
 
@@ -729,26 +874,7 @@ impl Response {
     /// Returns the control code that triggered this response, e.g. 10 for
     /// `Input`, 3 for `Quit`, ... Use this to produce a generic "unknown key
     /// key ^X" kind of message for any `Response` variants you don't handle,
-    /// perhaps with code like:
-    ///
-    /// ```no_run
-    /// # use std::time::Duration;
-    /// # use liso::Response;
-    /// # let response = Response::Quit;
-    /// # let io = liso::InputOutput::new();
-    /// match response {
-    ///     Response::Input(_) => { /* handle input somehow */ },
-    ///     Response::Quit | Response::Dead => return,
-    ///     other => {
-    ///         io.notice(format!("unknown key {}",
-    ///                           other.as_unknown() as char),
-    ///                   Duration::from_secs(1));
-    ///     }
-    /// }
-    /// ```
-    ///
-    /// (Liso converts control characters to reverse-video ^X forms on display,
-    /// so this will display like "unknown key ^X" with the "^X" hilighted.)
+    /// perhaps with code like. See the top of this file for an example.
     pub fn as_unknown(&self) -> u8 {
         match self {
             &Response::Input(_) => 10,
@@ -765,6 +891,10 @@ impl Response {
 
 impl Common {
     /// Prints a (possibly styled) line of regular output to the screen.
+    ///
+    /// Note: As usual with `Common` methods, you can pass a
+    /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
+    /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn println<T>(&self, line: T)
     where T: Into<Line> {
         let _ = self.tx.send(Request::Output(line.into()));
@@ -772,50 +902,95 @@ impl Common {
     /// Prints a (possibly styled) line of regular output to the screen,
     /// wrapping it to the width of the terminal. Only available with the
     /// "wrap" feature, which is enabled by default.
+    ///
+    /// Note: As usual with `Common` methods, you can pass a
+    /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
+    /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn wrapln<T>(&self, line: T)
     where T: Into<Line> {
         let _ = self.tx.send(Request::OutputWrapped(line.into()));
     }
     /// Prints a (possibly styled) line of regular output to the screen, but
-    /// only if we are being run interactively. Use this to echo commands
-    /// entered by the user.
+    /// only if we are being run interactively. Use this if you want to to echo
+    /// commands entered by the user, so that echoed commands will not gum up
+    /// the output when we are outputting to a pipe.
+    ///
+    /// Note: As usual with `Common` methods, you can pass a
+    /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
+    /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn echoln<T>(&self, line: T)
     where T: Into<Line> {
         let _ = self.tx.send(Request::OutputEcho(line.into()));
     }
-    /// Sets the status line to the given (possibly styled) text.
+    /// Sets the status line to the given (possibly styled) text. This will be
+    /// displayed above the prompt, but below printed output. (Does nothing in
+    /// pipe mode.)
+    ///
+    /// Note: `status(Some(""))` and `status(None)` will have different
+    /// results! The former will display a *blank* status line, while the
+    /// latter will display *no* status line.
+    ///
+    /// Note: As usual with `Common` methods, you can pass a
+    /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
+    /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn status<T>(&self, line: Option<T>)
     where T: Into<Line> {
         let _ = self.tx.send(Request::Status(line.map(T::into)));
     }
     /// Displays a (possibly styled) notice that temporarily replaces the
-    /// prompt. Will disappear if the user types a key, or after the given
-    /// amount of time passes.
+    /// prompt. The notice will disappear when the allotted time elapses, when
+    /// the user presses any key, or when another notice is displayed,
+    /// whichever happens first. (Does nothing in pipe mode.)
     ///
-    /// Replaces any previous notice.
+    /// You should only use this in direct response to user input; in fact, the
+    /// only legitimate use may be to complain about an unknown control
+    /// character. (See [`Response`][1] for an example of this use.)
+    ///
+    /// Note: As usual with `Common` methods, you can pass a
+    /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
+    /// here. See also the [`liso!`](macro.liso.html) macro.
+    ///
+    /// [1]: enum.Response.html
     pub fn notice<T>(&self, line: T, max_duration: Duration)
     where T: Into<Line> {
         let _ = self.tx.send(Request::Notice(line.into(), max_duration));
     }
-    /// Sets the prompt to the given (possibly styled) text.
-    /// 
-    /// `input_allowed`: True if the user should be allowed to write input.
-    /// `clear_input`: True if any existing partial input should be cleared.
-    /// 
+    /// Sets the prompt to the given (possibly styled) text. The prompt is
+    /// displayed in front of the user's input, unless we are running in pipe
+    /// mode.
+    ///
+    /// The default prompt is blank, with input allowed.
+    ///
+    /// - `input_allowed`: True if the user should be allowed to write input.
+    /// - `clear_input`: True if any existing partial input should be cleared
+    ///   when the new prompt is displayed. (If `input_allowed` is false, this
+    ///   should probably be `true`.)
+    ///
     /// Note: If the prompt is styled, whatever style is active at the end of
-    /// the prompt will be active for the user's input.
+    /// the prompt will be used when displaying the user's input. This is the
+    /// only circumstance in which Liso will not automatically reset style
+    /// information for you at the end of a `Line`.
+    ///
+    /// Note: When running in pipe mode, input is always allowed, there is no
+    /// way to clear buffered input, and promps are never displayed. In short,
+    /// this function does nothing at all in pipe mode.
+    ///
+    /// Note: As usual with `Common` methods, you can pass a
+    /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
+    /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn prompt<T>(&self, line: T,
                      input_allowed: bool, clear_input: bool)
     where T: Into<Line> {
+        let line = line.into();
         let _ = self.tx.send(Request::Prompt {
-            line: Some(line.into()), input_allowed, clear_input
+            line: if line.elements.len() == 0 { None } else { Some(line) },
+            input_allowed, clear_input
         });
     }
-    /// Removes the prompt.
-    /// 
-    /// `input_allowed`: True if the user should (still) be allowed to write
-    ///   input.
-    /// `clear_input`: True if any existing partial input should be cleared.
+    /// Removes the prompt. The boolean parameters have the same meaning as for
+    /// `prompt`.
+    #[deprecated="Use `prompt` with a blank line instead."]
+    #[doc(hidden)]
     pub fn remove_prompt(&self, input_allowed: bool, clear_input: bool) {
         let _ = self.tx.send(Request::Prompt {
             line: None, input_allowed, clear_input
@@ -829,12 +1004,12 @@ impl Common {
     /// stdout/stderr and can't run it through Liso. Prompt, status, and input
     /// in progress will be erased from the screen, and the terminal will be
     /// put back into normal mode. When the function returns, Liso will set up
-    /// the terminal, display the prompt, etc. as though nothing had happened.
+    /// the terminal, display the prompt, and continue as normal.
     ///
     /// Bear in mind that this will run in a separate thread, possibly after a
-    /// short delay. If you need to return a value, or otherwise communicate
-    /// with the main program, you should use the usual inter-thread
-    /// communication primitives, such as channels or atomics.
+    /// short delay. If you need to return a value, wait for completion, or
+    /// otherwise communicate with the main program, you should use the usual
+    /// inter-thread communication primitives, such as channels or atomics.
     ///
     /// Note that you **cannot** use this to create a subprocess that will read
     /// from stdin! Even though *output* is suspended, Liso will still be
@@ -844,12 +1019,16 @@ impl Common {
     /// it resumes.) If you want to create a subprocess that can use stdin and
     /// stdout, you'll have to write your own pipe handling based around Liso.
     /// If you want to create a subprocess that can interactively use the
-    /// terminal—you can't!
+    /// terminal—you have to drop the `InputOutput` instance, and all of the
+    /// existing `Output` instances will go dead as a result. Just don't do it!
     pub fn suspend_and_run<F: 'static + FnMut() + Send>(&self, f: F) {
         let _ = self.tx.send(Request::SuspendAndRun(Box::new(f)));
     }
-    /// Make a copy of this `Output`. The clone and the original can be stored
-    /// in separate places.
+    /// Make a separate `Output` that can also output to the terminal. The
+    /// clone and the original can be stored in separate places, even in
+    /// different threads or tasks. All output will go to the same terminal,
+    /// without any conflict between other threads doing output simultaneously
+    /// or with user input.
     ///
     /// For `Output`, this is the same as `clone`. For `InputOutput`, you
     /// must call this method instead, as this makes it clear that you are not
@@ -1022,28 +1201,44 @@ impl InputOutput {
 }
 
 /// Allows you to iterate over the characters in a [`Line`](struct.Line.html),
-/// one at a time, along with their style information. This is returned by
-/// [`Line::chars()`](struct.Line.html#method.chars).
+/// one at a time, along with their [`Style`][1] and [`Color`][2] information.
+/// This is returned by [`Line::chars()`](struct.Line.html#method.chars).
+///
+/// [1]: struct.Style.html
+/// [2]: enum.Color.html
 pub struct LineCharIterator<'a> {
     line: &'a Line,
     cur_element: usize,
     indices: std::str::CharIndices<'a>,
 }
 
-/// A single character from a `Line`, along with its associated style and index
-/// information. This is returned by
-/// [`LineCharIterator`](struct.LineCharIterator.html).
+/// A single character from a `Line`, along with the byte index it begins at,
+/// and the [`Style`][1] and [`Color`][2]s it would be displayed with. This is
+/// yielded by [`LineCharIterator`](struct.LineCharIterator.html), which is
+/// returned by [`Line::chars()`](struct.Line.html#method.chars).
+///
+/// [1]: struct.Style.html
+/// [2]: enum.Color.html
 #[derive(Clone,Copy,Debug)]
 pub struct LineChar {
-    /// Byte index within the `Line` of this char.
+    /// Byte index within the `Line` of the first byte of this `char`.
     pub index: usize,
-    /// The actual char.
+    /// The actual `char`. This is an individual Unicode code point. *Most*
+    /// code points correspond to single *characters*, but some are combining
+    /// characters (which change the rendering of nearby printable characters),
+    /// and some are invisible. And even the code points that are single
+    /// *characters* don't correspond to single *graphemes*. (This uncertainty
+    /// applies to all uses of Unicode, including other places in Rust where
+    /// you have a `char`.)
     pub ch: char,
-    /// Style (bold, inverse, etc.)
+    /// [`Style`](struct.Style.html) (bold, inverse, etc.) that would be used
+    /// to display this `char`.
     pub style: Style,
-    /// Foreground color
+    /// Foreground [`Color`](enum.Color.html) that would be used to display
+    /// this `char`.
     pub fg: Option<Color>,
-    /// Background color
+    /// Background [`Color`](enum.Color.html) that would be used to display
+    /// this `char`.
     pub bg: Option<Color>,
 }
 
@@ -1056,18 +1251,19 @@ impl PartialEq for LineChar {
 
 impl LineChar {
     /// Returns true if it is definitely impossible to distinguish spaces
-    /// printed in the style of both LineChars, false if it might be possible
+    /// printed in the style of both `LineChar`s, false if it might be possible
     /// to distinguish them. Used to optimize endfill when overwriting one line
-    /// with another.
+    /// with another. You probably don't need this method, but in case you do,
+    /// here it is.
     ///
     /// In cases whether the answer depends on the specific terminal, returns
-    /// false. One example is going from inverse video with a foreground color
-    /// to non-inverse video with the corresponding background color. (Some
-    /// terminals will display the same color differently depending on whether
-    /// it's foreground or background, and some of those terminals implement
-    /// inverse by simply swapping foreground and background, therefore we
-    /// can't count on them looking the same just because the color index is
-    /// the same.)
+    /// false, to be safe. One example is going from inverse video with a
+    /// foreground color to non-inverse video with the corresponding background
+    /// color. (Some terminals will display the same color differently
+    /// depending on whether it's foreground or background, and some of those
+    /// terminals implement inverse by simply swapping foreground and
+    /// background, therefore we can't count on them looking the same just
+    /// because the color indices are the same.)
     pub fn endfills_same_as(&self, other: &LineChar) -> bool {
         let a_underline = self.style.contains(Style::UNDERLINE);
         let b_underline = other.style.contains(Style::UNDERLINE);

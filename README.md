@@ -32,17 +32,35 @@ Liso provides line editing based on a commonly-used subset of the default GNU Re
 
 More bindings may be added in the future, and some of these are subject to change before 1.0.
 
-# TODO
+# Future
+
+## TODO
+
+Features that are currently set as prerequisites for a 1.0 release.
 
 - Control-V on input
-- Control-S/-Q on input
-- Squelch output feature (with mandatory status line, related to above)
 - Control-G on input
 - History
 - Tab completion
 - Windows testing
-- Document all the things, especially the weird VT52 module
+- Document the VT52 support
 - Move all the channels into TtyState
+- Optimize, hintify, reversiblize, etc. `LineCharIterator`
+- `read` regularization (`read_async`, `read_blocking`?)
+
+## Deferred features
+
+Features that are desirable, but proved too difficult to implement.
+
+- Control-S/-Q on input
+- Squelch output feature (with mandatory status line, related to above)
+
+## Pie in the sky
+
+Features that I'd like, but that I am unlikely ever to have the time to implement:
+
+- Right-to-left text support
+- Better combining character support
 
 # Legalese
 
