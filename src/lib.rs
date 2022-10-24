@@ -7,39 +7,40 @@
 //!
 //! # Usage
 //! 
-//! Create an [`IO`](struct.IO.html) object with `IO::new()`. Liso will
-//! automatically configure itself based on how your program is being used.
+//! Create an [`InputOutput`](struct.InputOutput.html) object with
+//! `InputOutput::new()`. Liso will automatically configure itself based on how
+//! your program is being used.
 //! 
-//! Your `IO` instance can be used to send output or receive input. Call
-//! `clone_sender` to create a `Sender` instance, which can only be used to
-//! send output. You can call `clone_sender` as many times as you like, as well
-//! as cloning the `Sender`s directly. An unlimited number of threads/tasks can
-//! send output through Liso, but only one thread/task can receive user input:
-//! whichever one currently holds the `IO` instance.
+//! Your `InputOutput` instance can be used to send output or receive input.
+//! Call `clone_output` to create an `Output` instance, which can only be used
+//! to send output. You can call `clone_output` as many times as you like, as
+//! well as cloning the `Output`s directly. An unlimited number of threads or
+//! tasks can send output through Liso, but only one thread/task can receive
+//! user input: whichever one currently holds the `InputOutput` instance.
 //! 
 //! Liso can work with `String`s and `&str`s directly. If you want to add style
 //! or color, create a [`Line`](struct.Line.html), either manually or using
 //! the convenient [`liso!` macro](macro.liso.html). Send output to the
-//! user by calling [`println()`](struct.Sender.html#method.println) or
-//! [`wrapln()`](struct.Sender.html#method.wrapln), whichever you prefer. Any
+//! user by calling [`println()`](struct.Common.html#method.println) or
+//! [`wrapln()`](struct.Common.html#method.wrapln), whichever you prefer. Any
 //! styling and color information is reset after the line is output, so you
 //! don't have to worry about dangling attributes.
 //! 
 //! Liso supports a prompt line, which is presented ahead of the user input.
-//! Use [`prompt()`](struct.Sender.html#method.prompt) to set it. Styling and
+//! Use [`prompt()`](struct.Common.html#method.prompt) to set it. Styling and
 //! color information is *not* reset between the prompt and the current input
 //! text, so you can style/color the input text by having the desired
 //! styles/colors active at the end of the prompt line.
 //! 
 //! Liso supports an optional status line, which "hangs out" above the input
-//! text. Use [`status()`](struct.Sender.html#method.status) to set it. Printed
+//! text. Use [`status()`](struct.Common.html#method.status) to set it. Printed
 //! text appears above the status line, the prompt and any in-progress input
 //! appears below it. Use this to present contextual or frequently-changing
 //! information.
 //! 
 //! Liso supports "notices", temporary messages that appear in place of the
 //! prompt and input for a limited time. Use
-//! [`notice()`](struct.Sender.html#method.notice) to display one. The notice
+//! [`notice()`](struct.Common.html#method.notice) to display one. The notice
 //! will disappear when the allotted time elapses, when the user presses any
 //! key, or when another notice is displayed, whichever happens first. You
 //! should only use this in direct response to user input; in fact, the only
@@ -259,21 +260,31 @@ impl Style {
     }
 }
 
-/// Sends output to the terminal. You can have more than one of these, shared
-/// freely among threads and tasks. Give one to every thread that needs to
-/// produce output.
-#[derive(Clone)]
-pub struct Sender {
+/// This is a common struct encapsulated by both the
+/// [`Output`](struct.Output.html) and [`InputOutput`](struct.InputOutput.html)
+/// structs.
+pub struct Common {
     tx: std_mpsc::Sender<Request>,
 }
 
+/// Sends output to the terminal. You can have more than one of these, shared
+/// freely among threads and tasks. Give one to every thread that needs to
+/// produce output.
+///
+/// Every method available on [`Common`](struct.Common.html) is also available
+/// on `Output`.
+pub struct Output(Common);
+
 /// Receives input from, and sends output to, the terminal. You can *send
 /// output* from any number of threads
-/// (see [`IO::clone_sender`](struct.IO.html#method.clone_sender)), but only
-/// one thread at a time may have ownership of the overlying `IO` type and
-/// therefore the ability to *receive input*.
-pub struct IO {
-    sender: Sender,
+/// (see [`Common::clone_output`](struct.Common.html#method.clone_output)), but
+/// only one thread at a time may have ownership of the overlying `InputOutput`
+/// type and therefore the ability to *receive input*.
+///
+/// Every method available on [`Common`](struct.Common.html) is also available
+/// on `InputOutput`.
+pub struct InputOutput {
+    common: Common,
     rx: tokio_mpsc::UnboundedReceiver<Response>,
     death_count: u32,
 }
@@ -673,12 +684,12 @@ pub enum Response {
     /// Sent when the terminal or the IO thread have died. Once you receive
     /// this once, you will never receive any other `Response` from Liso again.
     /// Your program should exit soon after, or at the very least should close
-    /// down that `IO` instance.
+    /// down that `InputOutput` instance.
     /// 
-    /// If your program receives `Response::Dead` on the same `IO` instance
-    /// too many times, Liso will panic. This is to prevent poorly-written
-    /// programs from failing to exit after a hangup condition or bug in
-    /// Liso cut off user input.
+    /// If your program receives `Response::Dead` on the same `InputOutput`
+    /// instance too many times, Liso will panic. This is to prevent
+    /// poorly-written programs from failing to exit after a hangup condition
+    /// or bug in Liso cut off user input.
     Dead,
     /// Sent when the user finishes entering a line of input. This is the
     /// entire line.
@@ -724,7 +735,7 @@ impl Response {
     /// # use std::time::Duration;
     /// # use liso::Response;
     /// # let response = Response::Quit;
-    /// # let io = liso::IO::new();
+    /// # let io = liso::InputOutput::new();
     /// match response {
     ///     Response::Input(_) => { /* handle input somehow */ },
     ///     Response::Quit | Response::Dead => return,
@@ -752,7 +763,7 @@ impl Response {
     }
 }
 
-impl Sender {
+impl Common {
     /// Prints a (possibly styled) line of regular output to the screen.
     pub fn println<T>(&self, line: T)
     where T: Into<Line> {
@@ -837,21 +848,31 @@ impl Sender {
     pub fn suspend_and_run<F: 'static + FnMut() + Send>(&self, f: F) {
         let _ = self.tx.send(Request::SuspendAndRun(Box::new(f)));
     }
+    /// Make a copy of this `Output`. The clone and the original can be stored
+    /// in separate places.
+    ///
+    /// For `Output`, this is the same as `clone`. For `InputOutput`, you
+    /// must call this method instead, as this makes it clear that you are not
+    /// trying to clone the `Input` half of that `InputOutput`.
+    pub fn clone_output(&self) -> Output {
+        Output(Common { tx: self.tx.clone() })
+    }
+
 }
 
-impl Drop for IO {
+impl Drop for InputOutput {
     fn drop(&mut self) {
         self.actually_blocking_die()
     }
 }
 
-impl core::ops::Deref for IO {
-    type Target = Sender;
-    fn deref(&self) -> &Sender { &self.sender }
+impl core::ops::Deref for InputOutput {
+    type Target = Common;
+    fn deref(&self) -> &Common { &self.common }
 }
 
-impl IO {
-    pub fn new() -> IO {
+impl InputOutput {
+    pub fn new() -> InputOutput {
         let (request_tx, request_rx) = std_mpsc::channel();
         let (response_tx, response_rx) = tokio_mpsc::unbounded_channel();
         let request_tx_clone = request_tx.clone();
@@ -861,28 +882,23 @@ impl IO {
                     worker::worker(request_tx_clone, request_rx, response_tx);
             })
             .unwrap();
-        IO {
-            sender: Sender { tx: request_tx },
+        InputOutput {
+            common: Common { tx: request_tx },
             rx: response_rx,
             death_count: 0,
         }
     }
-    /// An `IO` instance contains both a `Sender` (to produce output) and a
-    /// receiver (to receive input). Multiple `Sender`s may coexist in the same
-    /// program; produce additional `Sender`s as needed with this function.
-    pub fn clone_sender(&self) -> Sender {
-        self.sender.clone()
-    }
     /// Erase the prompt/status lines, put the terminal in a sensible mode,
     /// and otherwise clean up everything we've done to the terminal. This will
-    /// happen automatically when this `IO` instance is dropped; you only need
-    /// this method if you want to shut Liso down asynchronously for some
-    /// reason.
+    /// happen automatically when this `InputOutput` instance is dropped; you
+    /// only need this method if you want to shut Liso down asynchronously for
+    /// some reason.
     ///
-    /// If you made copies of this `Sender`, they will be "dead"; calling their
-    /// methods won't panic, but it won't do anything else either.
+    /// If `Output`s cloned from this `InputOutput` exist, they will be "dead";
+    /// calling their methods won't panic, but it won't do anything else
+    /// either.
     pub async fn die(mut self) {
-        if self.sender.tx.send(Request::Die).is_err() {
+        if self.common.tx.send(Request::Die).is_err() {
             // already dead!
             return
         }
@@ -894,7 +910,7 @@ impl IO {
         }
     }
     fn actually_blocking_die(&mut self) {
-        if self.sender.tx.send(Request::Die).is_err() {
+        if self.common.tx.send(Request::Die).is_err() {
             // already dead!
             return
         }
@@ -907,8 +923,8 @@ impl IO {
     }
     /// Erase the prompt/status lines, put the terminal in a sensible mode,
     /// and otherwise clean up everything we've done to the terminal. This will
-    /// happen automatically when this `IO` instance is dropped, so you
-    /// probably don't need to call this manually.
+    /// happen automatically when this `InputOutput` instance is dropped, so
+    /// you probably don't need to call this manually.
     pub fn blocking_die(mut self) {
         self.actually_blocking_die()
     }
@@ -1106,6 +1122,15 @@ impl Iterator for LineCharIterator<'_> {
             bg: element.bg,
         })
     }
+}
+
+impl core::ops::Deref for Output {
+    type Target = Common;
+    fn deref(&self) -> &Common { &self.0 }
+}
+
+impl Clone for Output {
+    fn clone(&self) -> Output { self.clone_output() }
 }
 
 #[cfg(feature="wrap")]
@@ -1432,3 +1457,12 @@ mod tests {
         }
     }
 }
+
+#[deprecated="This type was renamed to InputOutput to improve clarity.\n\
+              To continue using this name without warnings, try `use \
+              liso::InputOutput as IO;`"]
+#[doc(hidden)]
+pub type IO = InputOutput;
+#[deprecated="This type was renamed to Output to improve clarity."]
+#[doc(hidden)]
+pub type Sender = Output;

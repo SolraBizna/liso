@@ -12,7 +12,7 @@ const MONSTER_MAX_HP: i32 = 100;
 const MONSTER_ATTACK_DAMAGE: i32 = 10;
 
 struct Fight {
-    io: IO,
+    io: InputOutput,
     uhp: i32,
     upot: i32,
     mhp: i32,
@@ -20,7 +20,7 @@ struct Fight {
 
 impl Fight {
     fn play() {
-        let io = IO::new();
+        let io = InputOutput::new();
         io.wrapln(liso!(bold, "Welcome to Fight!"));
         io.wrapln("Your goal in life is to defeat this evil monster, before \
                       they can defeat you!");
