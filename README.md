@@ -1,12 +1,22 @@
-Liso (LEE-soh) is an acronym for Line Input with Simultaneous Output. It is a library for a particular kind of text-based Rust application; one where the user is expected to give command input at a prompt, but output can occur at any time. It provides simple line editing, and prevents input from clashing with output. It can be used asynchronously (with `tokio`) or synchronously (without).
+Liso (LEE-soh) is an acronym for Line Input with Simultaneous Output. It is a library for writing line-oriented programs: programs that take input in the form of lines, and produce output in the form of lines.
+
+Main features:
+
+- Line editing à la Readline
+- Customizable prompt
+- Output displayed separately from input
+- Simultaneous output from unlimited threads / tasks
+- Status line, displayed above input and below output
+- Pipeline-savvy (interactivity features are automatically disabled when used in a pipeline)
+- Optional async support (with `tokio`)
 
 It should work anywhere [Crossterm](https://crates.io/crates/crossterm) does:
 
 - Windows 7 or later (completely untested)
-- On UNIX, any system with an ANSI-compatible terminal (via crossterm) or a
-  VT52-compatible terminal (via custom support).
+- UNIX with an ANSI-compliant terminal (if you don't know if your terminal is ANSI-compliant, it is)
+- UNIX with a [VT52](#vt52-support) terminal
 
-See [the crate documentation](https://docs.rs/liso/latest/liso/) for more information.
+See [the crate documentation](https://docs.rs/liso/latest/liso/) for more information, or [the examples](https://github.com/SolraBizna/liso/tree/main/examples) for complete example programs.
 
 **NOTE: WORK IN PROGRESS!** Not release ready!
 
@@ -32,41 +42,7 @@ Liso provides line editing based on a commonly-used subset of the default GNU Re
 - **Control-Z**: (UNIX only) Gracefully suspend ourselves, awaiting resumption by our parent shell.
 - **Control-\\ or Break**: Send `Break`.
 
-More bindings may be added in the future, and some of these are subject to change before 1.0.
-
-# Future
-
-## Release blockers
-
-Features that are currently set as prerequisites for a 1.0 release.
-
-- History
-- Tab completion
-- Windows testing
-- Decide whether to implement a `clear_screen` call (would output a form-feed in pipe mode)
-- Move all the channels into TtyState
-- Optimize, hintify, reversiblize, etc. `LineCharIterator`
-- Clear all TODOs
-
-## TODO, eventually
-
-Features that are still planned, but won't block 1.0.
-
-- Control-V on input
-
-## Deferred features
-
-Features that are desirable, but proved too difficult to implement.
-
-- Control-S/-Q on input
-- Squelch output feature (with mandatory status line, related to above)
-
-## Pie in the sky
-
-Features that I'd like, but that I am unlikely ever to have the time to implement:
-
-- Right-to-left text support
-- Better combining character support
+These bindings are subject to change. More bindings may be added in the future, the default bindings may change, and user-specified bindings may one day be possible.
 
 # VT52 support!?
 
@@ -81,6 +57,12 @@ If the `TERM` environment variable exists, and the base type (to the left of the
 - `TERM=vt52`, any size: Real VT52 (untested).
 
 Input and output work. Special characters other than control keys don't work, I will need to do more testing to understand why. Testing Liso against Atari's VT52 emulator was extremely helpful in optimizing the redrawing routine, and teasing out some edge cases in the style handling.
+
+# Help Wanted
+
+I don't have a Windows machine in any real sense, so I can't test whether this crate functions on Windows. It *should*, since it uses Crossterm, but I would appreciate reports from Windows users and/or developers.
+
+I have no idea how well Liso works for visually-impaired users. If you use command line applications with a screen reader or a Braille terminal, I would greatly appreciate it if you got in touch with me. I would love to learn more about how I can improve your experience with Liso-based programs.
 
 # Legalese
 
