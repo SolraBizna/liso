@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "examples/fight", "examples/lish"]
+
 [package]
 name = "liso"
 version = "0.1.0"

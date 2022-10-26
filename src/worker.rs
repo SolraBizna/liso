@@ -50,6 +50,7 @@ fn pipe_worker(req_tx: std_mpsc::Sender<Request>,
                 }
             },
             Request::Die => break,
+            Request::Custom(x) => tx.send(Response::Custom(x))?,
             _ => (),
         }
     }
@@ -459,6 +460,7 @@ impl TtyState {
                     }
                 }
             },
+            Request::Custom(x) => tx.send(Response::Custom(x))?,
         }
         Ok(())
     }

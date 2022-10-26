@@ -13,8 +13,8 @@ Main features:
 It should work anywhere [Crossterm](https://crates.io/crates/crossterm) does:
 
 - Windows 7 or later (completely untested)
-- UNIX with an ANSI-compliant terminal (if you don't know if your terminal is ANSI-compliant, it is)
-- UNIX with a [VT52](#vt52-support) terminal
+- Any OS with an ANSI-compliant terminal (if you don't know if your terminal is ANSI-compliant, it is)
+- Any OS with a [VT52](#vt52-support)-compatible terminal
 
 See [the crate documentation](https://docs.rs/liso/latest/liso/) for more information, or [the examples](https://github.com/SolraBizna/liso/tree/main/examples) for complete example programs.
 

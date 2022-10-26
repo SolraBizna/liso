@@ -12,35 +12,36 @@
 //! your program is being used.
 //! 
 //! Your `InputOutput` instance can be used to send output or receive input.
-//! Call `clone_output` to create an `Output` instance, which can only be used
-//! to send output. You can call `clone_output` as many times as you like, as
-//! well as cloning the `Output`s directly. An unlimited number of threads or
-//! tasks can send output through Liso, but only one thread/task can receive
-//! user input: whichever one currently holds the `InputOutput` instance.
+//! Call `clone_output` to create an `OutputOnly` instance, which can only be
+//! used to send output. You can call `clone_output` as many times as you like,
+//! as well as cloning the `OutputOnly`s directly. An unlimited number of
+//! threads or tasks can send output through Liso, but only one thread/task can
+//! receive user input: whichever one currently holds the `InputOutput`
+//! instance.
 //! 
 //! Liso can work with `String`s and `&str`s directly. If you want to add style
 //! or color, create a [`Line`](struct.Line.html), either manually or using
 //! the convenient [`liso!` macro](macro.liso.html). Send output to the
-//! user by calling [`println()`](struct.Common.html#method.println) or
-//! [`wrapln()`](struct.Common.html#method.wrapln), whichever you prefer. Any
+//! user by calling [`println()`](struct.Output.html#method.println) or
+//! [`wrapln()`](struct.Output.html#method.wrapln), whichever you prefer. Any
 //! styling and color information is reset after the line is output, so you
 //! don't have to worry about dangling attributes.
 //! 
 //! Liso supports a prompt line, which is presented ahead of the user input.
-//! Use [`prompt()`](struct.Common.html#method.prompt) to set it. Styling and
+//! Use [`prompt()`](struct.Output.html#method.prompt) to set it. Styling and
 //! color information is *not* reset between the prompt and the current input
 //! text, so you can style/color the input text by having the desired
 //! styles/colors active at the end of the prompt line.
 //! 
 //! Liso supports an optional status line, which "hangs out" above the input
-//! text. Use [`status()`](struct.Common.html#method.status) to set it. Printed
+//! text. Use [`status()`](struct.Output.html#method.status) to set it. Printed
 //! text appears above the status line, the prompt and any in-progress input
 //! appears below it. Use this to present contextual or frequently-changing
 //! information.
 //! 
 //! Liso supports "notices", temporary messages that appear in place of the
 //! prompt and input for a limited time. Use
-//! [`notice()`](struct.Common.html#method.notice) to display one. The notice
+//! [`notice()`](struct.Output.html#method.notice) to display one. The notice
 //! will disappear when the allotted time elapses, when the user presses any
 //! key, or when another notice is displayed, whichever happens first. You
 //! should only use this in direct response to user input; in fact, the only
@@ -66,6 +67,7 @@
 //! output of the Liso-enabled program to `cat`, as in `my_liso_program | cat`.
 
 use std::{
+    any::Any,
     borrow::Cow,
     time::{Duration, Instant},
     sync::atomic::{AtomicBool, Ordering},
@@ -278,25 +280,25 @@ impl Style {
 }
 
 /// This struct contains all the methods that the
-/// [`Output`](struct.Output.html) and [`InputOutput`](struct.InputOutput.html)
-/// structs have in common. Any method of this struct may be called on either
-/// of the other structs.
-pub struct Common {
+/// [`OutputOnly`](struct.OutputOnly.html) and
+/// [`InputOutput`](struct.InputOutput.html) structs have in common. Any method
+/// of this struct may be called on either of the other structs.
+pub struct Output {
     tx: std_mpsc::Sender<Request>,
 }
 
 /// Sends output to the terminal. You can have more than one of these, shared
 /// freely among threads and tasks. Give one to every thread, task, or object
 /// that needs to produce output.
-pub struct Output(Common);
+pub struct OutputOnly(Output);
 
 /// Receives input from, and sends output to, the terminal. You can *send
 /// output* from any number of threads
-/// (see [`Common::clone_output`](struct.Common.html#method.clone_output)), but
+/// (see [`Output::clone_output`](struct.Output.html#method.clone_output)), but
 /// only one thread at a time may have ownership of the overlying `InputOutput`
 /// type and therefore the ability to *receive input*.
 pub struct InputOutput {
-    common: Common,
+    output: Output,
     rx: tokio_mpsc::UnboundedReceiver<Response>,
     death_count: u32,
 }
@@ -639,8 +641,8 @@ impl Line {
     /// the `wrap` feature, which is enabled by default.
     ///
     /// Rather than calling this method yourself, you definitely want to use
-    /// the [`wrapln`](struct.Common.html#method.wrapln) method instead of the
-    /// [`println`](struct.Common.html#method.println) method. That way, Liso
+    /// the [`wrapln`](struct.Output.html#method.wrapln) method instead of the
+    /// [`println`](struct.Output.html#method.println) method. That way, Liso
     /// will automatically wrap the line of text to the correct width for the
     /// user's terminal.
     #[cfg(feature="wrap")]
@@ -758,16 +760,15 @@ enum Request {
     /// possible, meaningful escape sequences must already have been parsed
     /// out. (The pipe worker doesn't interpret escape sequences and therefore
     /// does no such processing.)
-    #[doc(hidden)]
     RawInput(String),
-    /// Another implementation detail, used to implement notices.
-    #[doc(hidden)]
+    /// Used to implement notices.
     Heartbeat,
-    /// Another implementation detail. If the crossterm event system is being
-    /// used, this is an event received. This can be the case even if the
-    /// crossterm *input* system isn't being used.
-    #[doc(hidden)]
+    /// If the crossterm event system is being used, this is an event received.
+    /// This can be the case even if the crossterm *input* system isn't being
+    /// used.
     CrosstermEvent(crossterm::event::Event),
+    /// Sent by `send_custom`.
+    Custom(Box<dyn Any + Send>),
 }
 
 /// Input received from the user, or a special condition. Returned by any of
@@ -820,7 +821,7 @@ enum Request {
 /// ```
 ///
 /// 
-#[derive(Debug,PartialEq,Eq,PartialOrd,Ord)]
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum Response {
     /// Sent when the user finishes entering a line of input. This is the
@@ -829,7 +830,7 @@ pub enum Response {
     ///
     /// In case you don't want to do in-depth parsing of the user's input, you
     /// can match against static string literals with a little work. You may
-    /// also want to use [`echoln`](struct.Common.html#method.echoln) to echo
+    /// also want to use [`echoln`](struct.Output.html#method.echoln) to echo
     /// the user's input. See the top of this documentation for an example of
     /// both.
     Input(String),
@@ -868,6 +869,9 @@ pub enum Response {
     Escape,
     /// Sent when the user presses control-X.
     Swap,
+    /// Sent whenever `send_custom` is called. This can be used to interrupt
+    /// the input thread when it's doing a `read_blocking` call.
+    Custom(Box<dyn Any + Send>),
     /// Sent when the user presses an unknown control character with the given
     /// value (which will be between 0 and 31 inclusive).
     /// 
@@ -888,6 +892,7 @@ impl Response {
         match self {
             &Response::Input(_) => 10,
             &Response::Discarded(_) => 7,
+            &Response::Custom(_) => 0,
             &Response::Quit => 3,
             &Response::Finish => 4,
             &Response::Info => 20,
@@ -899,7 +904,7 @@ impl Response {
     }
 }
 
-impl Common {
+impl Output {
     /// Prints a (possibly styled) line of regular output to the screen.
     ///
     /// Note: As usual with `Common` methods, you can pass a
@@ -1041,22 +1046,34 @@ impl Common {
         self.tx.send(Request::SuspendAndRun(Box::new(f)))
             .expect("Liso output has stopped");
     }
-    /// Make a separate `Output` that can also output to the terminal. The
-    /// clone and the original can be stored in separate places, even in
-    /// different threads or tasks. All output will go to the same terminal,
-    /// without any conflict between other threads doing output simultaneously
-    /// or with user input.
+    /// Make a new `OutputOnly` that can also output to the terminal. The clone
+    /// and the original can be stored in separate places, even in different
+    /// threads or tasks. All output will go to the same terminal, without any
+    /// conflict between other threads doing output simultaneously or with user
+    /// input.
     ///
-    /// For `Output`, this is the same as `clone`. For `InputOutput`, you
+    /// For `OutputOnly`, this is the same as `clone`. For `InputOutput`, you
     /// must call this method instead, as this makes it clear that you are not
     /// trying to clone the `Input` half of that `InputOutput`.
-    pub fn clone_output(&self) -> Output {
-        Output(Common { tx: self.tx.clone() })
+    pub fn clone_output(&self) -> OutputOnly {
+        OutputOnly(Output { tx: self.tx.clone() })
     }
     #[deprecated="Use `clone_output` instead."]
     #[doc(hidden)]
-    pub fn clone_sender(&self) -> Output {
+    pub fn clone_sender(&self) -> OutputOnly {
         self.clone_output()
+    }
+    /// Send the given value to the input thread, wrapped in a
+    /// [`Response::Custom`](enum.Response.html#variant.Custom).
+    pub fn send_custom<T: Any + Send>(&self, value: T) {
+        self.tx.send(Request::Custom(Box::new(value)))
+            .expect("Liso output has stopped")
+    }
+    /// Send the given already-boxed value to the input thread, wrapped in a
+    /// [`Response::Custom`](enum.Response.html#variant.Custom).
+    pub fn send_custom_box(&self, value: Box<dyn Any + Send>) {
+        self.tx.send(Request::Custom(value))
+            .expect("Liso output has stopped")
     }
 }
 
@@ -1068,8 +1085,8 @@ impl Drop for InputOutput {
 }
 
 impl core::ops::Deref for InputOutput {
-    type Target = Common;
-    fn deref(&self) -> &Common { &self.common }
+    type Target = Output;
+    fn deref(&self) -> &Output { &self.output }
 }
 
 impl InputOutput {
@@ -1091,7 +1108,7 @@ impl InputOutput {
             })
             .unwrap();
         InputOutput {
-            common: Common { tx: request_tx },
+            output: Output { tx: request_tx },
             rx: response_rx,
             death_count: 0,
         }
@@ -1105,7 +1122,7 @@ impl InputOutput {
     /// If `Output`s cloned from this `InputOutput` exist, they will be "dead";
     /// calling their methods will panic!
     pub async fn die(mut self) {
-        if self.common.tx.send(Request::Die).is_err() {
+        if self.output.tx.send(Request::Die).is_err() {
             // already dead!
             return
         }
@@ -1117,7 +1134,7 @@ impl InputOutput {
         }
     }
     fn actually_blocking_die(&mut self) {
-        if self.common.tx.send(Request::Die).is_err() {
+        if self.output.tx.send(Request::Die).is_err() {
             // already dead!
             return
         }
@@ -1133,8 +1150,8 @@ impl InputOutput {
     /// happen automatically when this `InputOutput` instance is dropped, so
     /// you probably don't need to call this manually.
     ///
-    /// If `Output`s cloned from this `InputOutput` exist, they will be "dead";
-    /// calling their methods will panic!
+    /// If `OutputOnly`s cloned from this `InputOutput` exist, they will be
+    /// "dead"; calling their methods will panic!
     pub fn blocking_die(mut self) {
         self.actually_blocking_die()
     }
@@ -1361,13 +1378,13 @@ impl Iterator for LineCharIterator<'_> {
     }
 }
 
-impl core::ops::Deref for Output {
-    type Target = Common;
-    fn deref(&self) -> &Common { &self.0 }
+impl core::ops::Deref for OutputOnly {
+    type Target = Output;
+    fn deref(&self) -> &Output { &self.0 }
 }
 
-impl Clone for Output {
-    fn clone(&self) -> Output { self.clone_output() }
+impl Clone for OutputOnly {
+    fn clone(&self) -> OutputOnly { self.clone_output() }
 }
 
 #[cfg(feature="wrap")]
@@ -1695,14 +1712,15 @@ mod tests {
     }
 }
 
-#[deprecated="This type was renamed to InputOutput to improve clarity.\n\
+#[deprecated="This type was renamed to `InputOutput` to improve clarity.\n\
               To continue using this name without warnings, try `use \
               liso::InputOutput as IO;`"]
 #[doc(hidden)]
 pub type IO = InputOutput;
-#[deprecated="This type was renamed to Output to improve clarity."]
+#[deprecated="This type was split into `Output` and `OutputOnly` to improve \
+              clarity.\nReplace with `&Output` or `OutputOnly` as needed."]
 #[doc(hidden)]
-pub type Sender = Output;
+pub type Sender = OutputOnly;
 
 /// Used to prevent multiple Liso instances from being active at once.
 static LISO_IS_ACTIVE: AtomicBool = AtomicBool::new(false);
