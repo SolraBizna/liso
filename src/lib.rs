@@ -1388,6 +1388,7 @@ impl Clone for OutputOnly {
 
 #[cfg(feature="wrap")]
 fn convert_subset_slice_to_range(outer: &str, inner: &str) -> (usize, usize) {
+    if inner.len() == 0 { return (0, 0) }
     let outer_start = outer.as_ptr() as usize;
     let outer_end = outer_start.checked_add(outer.len()).unwrap();
     let inner_start = inner.as_ptr() as usize;
