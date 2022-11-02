@@ -12,12 +12,12 @@
 //! your program is being used.
 //! 
 //! Your `InputOutput` instance can be used to send output or receive input.
-//! Call `clone_output` to create an `OutputOnly` instance, which can only be
-//! used to send output. You can call `clone_output` as many times as you like,
-//! as well as cloning the `OutputOnly`s directly. An unlimited number of
-//! threads or tasks can send output through Liso, but only one thread/task can
-//! receive user input: whichever one currently holds the `InputOutput`
-//! instance.
+//! Call `clone_output` to create an [`OutputOnly`](struct.OutputOnly.html)
+//! instance, which can only be used to send output. You can call
+//! `clone_output` as many times as you like, as well as cloning the
+//! `OutputOnly`s directly. An unlimited number of threads or tasks can send
+//! output through Liso, but only one thread/task can receive user input:
+//! whichever one currently holds the `InputOutput` instance.
 //! 
 //! Liso can work with `String`s and `&str`s directly. If you want to add style
 //! or color, create a [`Line`](struct.Line.html), either manually or using
@@ -46,8 +46,7 @@
 //! key, or when another notice is displayed, whichever happens first. You
 //! should only use this in direct response to user input; in fact, the only
 //! legitimate use may be to complain about an unknown control character. (See
-//! [`Response::as_unknown`](enum.Response.html#method.as_unknown) for an
-//! example of this use.)
+//! [`Response`](enum.Response.html) for an example of this use.)
 //! 
 //! # Pipe mode
 //! 
@@ -907,7 +906,7 @@ impl Response {
 impl Output {
     /// Prints a (possibly styled) line of regular output to the screen.
     ///
-    /// Note: As usual with `Common` methods, you can pass a
+    /// Note: As usual with `Output` methods, you can pass a
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn println<T>(&self, line: T)
@@ -919,7 +918,7 @@ impl Output {
     /// wrapping it to the width of the terminal. Only available with the
     /// "wrap" feature, which is enabled by default.
     ///
-    /// Note: As usual with `Common` methods, you can pass a
+    /// Note: As usual with `Output` methods, you can pass a
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn wrapln<T>(&self, line: T)
@@ -932,7 +931,7 @@ impl Output {
     /// commands entered by the user, so that echoed commands will not gum up
     /// the output when we are outputting to a pipe.
     ///
-    /// Note: As usual with `Common` methods, you can pass a
+    /// Note: As usual with `Output` methods, you can pass a
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn echoln<T>(&self, line: T)
@@ -948,7 +947,7 @@ impl Output {
     /// results! The former will display a *blank* status line, while the
     /// latter will display *no* status line.
     ///
-    /// Note: As usual with `Common` methods, you can pass a
+    /// Note: As usual with `Output` methods, you can pass a
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn status<T>(&self, line: Option<T>)
@@ -965,7 +964,7 @@ impl Output {
     /// only legitimate use may be to complain about an unknown control
     /// character. (See [`Response`][1] for an example of this use.)
     ///
-    /// Note: As usual with `Common` methods, you can pass a
+    /// Note: As usual with `Output` methods, you can pass a
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
     ///
@@ -995,7 +994,7 @@ impl Output {
     /// way to clear buffered input, and promps are never displayed. In short,
     /// this function does nothing at all in pipe mode.
     ///
-    /// Note: As usual with `Common` methods, you can pass a
+    /// Note: As usual with `Output` methods, you can pass a
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn prompt<T>(&self, line: T,

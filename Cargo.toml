@@ -3,11 +3,14 @@ members = [".", "examples/fight", "examples/lish"]
 
 [package]
 name = "liso"
-version = "0.1.0"
+version = "0.7.0"
+description = "Line Input with Simultaneous Output: input lines are editable, output lines are never scrambled, and all of it thread safe."
 authors = ["Solra Bizna <solra@bizna.name>"]
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+edition = "2021"
+repository = "https://github.com/SolraBizna/liso"
+license = "MIT OR Apache-2.0"
+keywords = ["readline", "command-line", "line-editing"]
+categories = ["command-line-interface"]
 
 [dependencies]
 bitflags = "1.3"
