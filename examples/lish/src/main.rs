@@ -213,7 +213,7 @@ impl Shell {
         if let Some(id) = self.target_job {
             if let Some(job) = self.jobs.get_mut(id).and_then(|x| x.as_mut()) {
                 self.output.echoln(liso!(dim, &job.job_name, fg=blue, bold, format!("[{}]> ", id), fg=none, inverse, "^C", -inverse));
-                job.kill();
+                job.kill(&self.output);
                 return None
             }
             else {
@@ -416,7 +416,7 @@ impl Job {
         output.wrapln(liso!(fg=green, bold, "> ", reset,
             format!("Job [{}]: {}", id, self.job_line)));
     }
-    fn kill(&mut self) {
+    fn kill(&mut self, _output: &Output) {
         #[cfg(unix)]
         {
             use nix::unistd::Pid;
@@ -435,7 +435,7 @@ impl Job {
         }
         #[cfg(not(unix))]
         {
-            self.err("Can't kill jobs on this OS. Sorry.");
+            _output.wrapln(liso!(fg=red, bold, "< Can't kill jobs on this OS. Sorry."));
         }
     }
 }
