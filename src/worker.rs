@@ -141,9 +141,9 @@ impl TtyState {
                     out_breaks: &mut Option<u32>, term_width: u32) {
         if let Some(cursor_pos) = cursor_pos {
             if index == cursor_pos {
-                if cur_column == term_width {
-                    *out_column = Some(0);
-                    *out_breaks = Some(cur_breaks+1);
+                if cur_column >= term_width {
+                    *out_column = Some(term_width);
+                    *out_breaks = Some(cur_breaks);
                 }
                 else {
                     *out_column = Some(cur_column);
@@ -159,8 +159,10 @@ impl TtyState {
                          mut cur_column: u32,
                          cur_breaks: u32)
     -> LifeOrDeath {
-        if cur_column >= term_width { cur_column = term_width-1; }
-        if *real_column >= term_width { *real_column = term_width-1; }
+        cur_column = cur_column.min(term_width);
+        *real_column = (*real_column).min(term_width);
+        let cur_shown_column = cur_column.min(term_width-1);
+        let real_shown_column = (*real_column).min(term_width-1);
         if *real_breaks != cur_breaks {
             if *real_breaks < cur_breaks {
                 term.move_cursor_down(cur_breaks - *real_breaks)?;
@@ -171,13 +173,13 @@ impl TtyState {
             }
             *real_breaks = cur_breaks;
         }
-        if *real_column != cur_column {
-            if *real_column < cur_column {
-                term.move_cursor_right(cur_column - *real_column)?;
+        if real_shown_column != cur_shown_column {
+            if real_shown_column < cur_shown_column {
+                term.move_cursor_right(cur_shown_column - real_shown_column)?;
             }
             else {
-                debug_assert!(*real_column > cur_column);
-                term.move_cursor_left(*real_column - cur_column)?;
+                debug_assert!(real_shown_column > cur_shown_column);
+                term.move_cursor_left(real_shown_column - cur_shown_column)?;
             }
             *real_column = cur_column;
         }
@@ -325,7 +327,22 @@ impl TtyState {
                                                &mut real_column,
                                                &mut real_breaks,
                                                cur_column, cur_breaks)?;
-                        term.clear_forward_and_reset()?;
+                        if real_column == term_width && cur_column+1 == term_width {
+                            term.print_spaces(1)?;
+                        }
+                        else if cur_column == term_width {
+                            term.newline()?;
+                            term.clear_forward_and_reset()?;
+                            real_column = 0;
+                            real_breaks += 1;
+                            self.reconcile_cursors(&mut term, term_width,
+                                                   &mut real_column,
+                                                   &mut real_breaks,
+                                                    cur_column, cur_breaks)?;
+                        }
+                        else {
+                            term.clear_forward_and_reset()?;
+                        }
                         endfill_redundant = false;
                     }
                     break a.is_none();
