@@ -189,7 +189,8 @@ impl TtyState {
                    term_width: u32,
                    cur_attr: &mut (Style, Option<Color>, Option<Color>),
                    lc: LineChar,
-                   cur_column: &mut u32, cur_breaks: &mut u32)
+                   cur_column: &mut u32, cur_breaks: &mut u32,
+                   implied_newline: &mut bool)
         -> LifeOrDeath {
         if (lc.style, lc.fg, lc.bg) != *cur_attr {
             term.set_attrs(lc.style, lc.fg, lc.bg)?;
@@ -198,6 +199,17 @@ impl TtyState {
         let ch = lc.ch;
         let char_width
             = UnicodeWidthChar::width(ch).unwrap_or(0) as u32;
+        if ch != '\n' {
+            term.print_char(ch)?;
+            *cur_column += char_width;
+            *implied_newline = false;
+        }
+        else if ch == '\n' {
+            if *implied_newline {
+                *implied_newline = false;
+                return Ok(())
+            }
+        }
         if (char_width > 0 && *cur_column >= term_width) || ch == '\n' {
             if *cur_column < term_width {
                 if cur_attr.0.contains(Style::INVERSE)
@@ -210,27 +222,33 @@ impl TtyState {
                 }
             }
             term.newline()?;
+            *implied_newline = ch != '\n';
             *cur_breaks += 1;
             *cur_column = 0;
-        }
-        if ch != '\n' {
-            term.print_char(ch)?;
-            *cur_column += char_width;
         }
         Ok(())
     }
     fn sim_output_char(&self, term_width: u32, lc: LineChar,
-                       cur_column: &mut u32, cur_breaks: &mut u32)
+                       cur_column: &mut u32, cur_breaks: &mut u32,
+                       implied_newline: &mut bool)
     -> LifeOrDeath {
         let ch = lc.ch;
         let char_width
             = UnicodeWidthChar::width(ch).unwrap_or(0) as u32;
+        if ch != '\n' {
+            *cur_column += char_width;
+            *implied_newline = false;
+        }
+        else if ch == '\n' {
+            if *implied_newline {
+                *implied_newline = false;
+                return Ok(())
+            }
+        }
         if (char_width > 0 && *cur_column >= term_width) || ch == '\n' {
             *cur_breaks += 1;
             *cur_column = 0;
-        }
-        if ch != '\n' {
-            *cur_column += char_width;
+            *implied_newline = ch != '\n';
         }
         Ok(())
     }
@@ -243,7 +261,7 @@ impl TtyState {
     ///   position that corresponds to the given byte position in the line's
     ///   text. If absent, the cursor will be wherever it wants to be.
     /// - `break_after`: If true, we will output one last linebreak at the end
-    ///   of the line.
+    ///   of the line, iff the line didn't end on a newline.
     /// - `endfill`: If true, we will ensure that the current background color
     ///   and/or inversion is padded out to the end of the line. (This must
     ///   always be true when `break_after` is true.)
@@ -278,6 +296,7 @@ impl TtyState {
         let mut endfill_redundant = false;
         let mut output_cursor_top = None;
         let mut output_cursor_left = None;
+        let mut implied_newline = false;
         let ended_simultaneously = loop {
             match (old_chars.as_mut().and_then(|x| x.next()), new_chars.next()) {
                 (Some(a), Some(b)) => {
@@ -286,7 +305,8 @@ impl TtyState {
                         &mut output_cursor_top, term_width);
                     if a == b {
                         self.sim_output_char(term_width, b,
-                                             &mut cur_column, &mut cur_breaks)?;
+                                             &mut cur_column, &mut cur_breaks,
+                                             &mut implied_newline)?;
                         continue;
                     }
                     // we have a difference! Let the real cursor catch up
@@ -301,7 +321,8 @@ impl TtyState {
                         old_chars = None;
                     }
                     self.output_char(&mut term, term_width, &mut cur_attr,
-                                     b, &mut cur_column, &mut cur_breaks)?;
+                                     b, &mut cur_column, &mut cur_breaks,
+                                     &mut implied_newline)?;
                     real_column = cur_column;
                     real_breaks = cur_breaks;
                     endfill_redundant = a.endfills_same_as(&b);
@@ -315,7 +336,8 @@ impl TtyState {
                                            &mut real_breaks,
                                            cur_column, cur_breaks)?;
                     self.output_char(&mut term, term_width, &mut cur_attr,
-                                     b, &mut cur_column, &mut cur_breaks)?;
+                                     b, &mut cur_column, &mut cur_breaks,
+                                     &mut implied_newline)?;
                     real_column = cur_column;
                     real_breaks = cur_breaks;
                     endfill_redundant = false;
@@ -359,7 +381,8 @@ impl TtyState {
                                     &mut real_breaks,
                                     cur_column, cur_breaks)?;
             self.output_char(&mut term, term_width, &mut cur_attr,
-                             b, &mut cur_column, &mut cur_breaks)?;
+                             b, &mut cur_column, &mut cur_breaks,
+                             &mut implied_newline)?;
             real_column = cur_column;
             real_breaks = cur_breaks;
         }
@@ -388,7 +411,7 @@ impl TtyState {
             }
         }
         term.set_attrs(Style::empty(), None, None)?;
-        if break_after {
+        if break_after && !implied_newline {
             if !endfill && cur_column != term_width {
                 term.clear_to_end_of_line()?;
             }
