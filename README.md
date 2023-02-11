@@ -9,6 +9,8 @@ Main features:
 - Status line, displayed above input and below output
 - Pipeline-savvy (interactivity features are automatically disabled when used in a pipeline)
 - Optional async support (with `tokio`)
+- Optional history support (feature flag `history`)
+- Optional line wrapping (feature flag `wrap` and the `wrapln` function)
 
 Supported platforms:
 
@@ -25,13 +27,14 @@ Liso provides line editing based on a commonly-used subset of the default GNU Re
 - **Escape**: Send `Escape`.
 - **Return (control-M) or Enter (control-J)**: Send the current line of input.
 - **Control-A or Home**: Go to beginning of line.
-- **Control-B/F or Left/Right**: Move cursor.
+- **Control-B/F or Left/Right**: Move cursor. (**b**ackwards or **f**orwards)
 - **Control-C**: Send `Quit`.
 - **Control-D**: Discard the input if there is any, or send `Finish` otherwise.
 - **Control-E or End**: Go to end of line.
 - **Control-G**: Discard the input if there is any, leaving feedback of the aborted entry.
 - **Control-K**: Cut (**k**ill) everything after the cursor.
 - **Control-L**: Clear the display.
+- **Control-N/P or Up/Down**: Move through history. (**p**revious or **n**ext)
 - **Control-T**: Send `Info`.
 - **Control-U**: Cut (kill) everything before the cursor.
 - **Control-W**: Delete leftward from cursor until reaching a `White_Space` character. ("Delete **w**ord")
@@ -64,7 +67,7 @@ I have no idea how well Liso works for visually-impaired users. If you use comma
 
 # Future
 
-Tab completion and history support are on the roadmap. Perhaps, someday, RTL / bidirectional support as well.
+Tab completion is on the roadmap. Perhaps, someday, RTL / bidirectional support as well.
 
 # Legalese
 

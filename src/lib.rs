@@ -48,6 +48,20 @@
 //! legitimate use may be to complain about an unknown control character. (See
 //! [`Response`](enum.Response.html) for an example of this use.)
 //! 
+//! # History
+//! 
+//! If the `history` feature is enabled (which it is by default), Liso supports
+//! a rudimentary command history. It provides a conservative default that
+//! isn't backed by any file. Try:
+//! 
+//! ```rust
+//! # let io = liso::InputOutput::new();
+//! io.swap_history(liso::History::from_file(some_path));
+//! ```
+//! 
+//! to make it backed by a file, and see [`History`](struct.History.html) for
+//! more information.
+//! 
 //! # Pipe mode
 //! 
 //! If *either* stdin or stdout is not a tty, *or* the `TERM` environment
