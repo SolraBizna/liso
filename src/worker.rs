@@ -78,6 +78,10 @@ struct TtyState {
     term: RefCell<Box<dyn Term>>,
     #[cfg(feature="history")]
     history: Arc<RwLock<History>>,
+    #[cfg(feature="history")]
+    cur_history_index: Option<usize>,
+    #[cfg(feature="history")]
+    orphaned_new_input: Option<String>,
 }
 
 impl TtyState {
@@ -472,10 +476,7 @@ impl TtyState {
                 }
             },
             Request::Notice(line, duration) => {
-                self.rollout_needed = true;
-                let deadline = Instant::now() + duration;
-                self.notice = Some((line, deadline));
-                ded_tx.send(deadline)?;
+                self.show_notice(line, duration, ded_tx)?;
             },
             Request::Prompt{line, input_allowed, clear_input} => {
                 if self.prompt != line
@@ -483,15 +484,21 @@ impl TtyState {
                     self.rollout_needed = true;
                     self.prompt = line;
                     self.input_allowed = input_allowed;
-                    if clear_input { self.input.clear() }
+                    if clear_input {
+                        self.input.clear();
+                        #[cfg(feature="history")] {
+                            self.cur_history_index = None;
+                            self.orphaned_new_input = None;
+                        }
+                    }
                 }
             },
             Request::Bell => self.term.borrow_mut().bell()?,
             Request::RawInput(input) => {
-                self.handle_input(tx, &input)?
+                self.handle_input(tx, &input, ded_tx)?
             },
             Request::CrosstermEvent(event) => {
-                self.handle_event(tx, event)?
+                self.handle_event(tx, event, ded_tx)?
             },
             Request::Die => return Ok(()),
             Request::Heartbeat => {
@@ -614,6 +621,10 @@ impl TtyState {
         self.dismiss_notice()?;
         let mut input = String::new();
         swap(&mut input, &mut self.input);
+        #[cfg(feature="history")] {
+            self.cur_history_index = None;
+            self.orphaned_new_input = None;
+        }
         let was_empty = input.is_empty();
         tx.send(Response::Discarded(input))?;
         if !was_empty {
@@ -727,13 +738,24 @@ impl TtyState {
         }
         Ok(())
     }
-    fn handle_return(&mut self, tx: &mut tokio_mpsc::UnboundedSender<Response>)
+    fn handle_return(&mut self, tx: &mut tokio_mpsc::UnboundedSender<Response>, ded_tx: &mut std_mpsc::SyncSender<Instant>)
     -> LifeOrDeath {
         self.rollout_needed = true;
         self.notice = None;
         let mut input = String::new();
         swap(&mut input, &mut self.input);
         self.input_cursor = 0;
+        #[cfg(feature="history")] {
+            self.cur_history_index = None;
+            self.orphaned_new_input = None;
+            let mut lock = self.history.write().unwrap();
+            if let Err(e) = lock.add_line(input.clone()) {
+                // TODO: make localizable
+                let e = format!("Unable to write history: {}", e);
+                drop(lock);
+                self.show_notice(liso!(inverse, e), Duration::from_secs(3), ded_tx)?;
+            }
+        }
         tx.send(Response::Input(input))?;
         Ok(())
     }
@@ -745,12 +767,16 @@ impl TtyState {
         else {
             self.rollout_needed = true;
             self.input.clear();
+            #[cfg(feature="history")] {
+                self.cur_history_index = None;
+                self.orphaned_new_input = None;
+            }
             self.input_cursor = 0;
         }
         Ok(())
     }
     fn handle_input(&mut self, tx: &mut tokio_mpsc::UnboundedSender<Response>,
-                    input: &str)
+                    input: &str, ded_tx: &mut std_mpsc::SyncSender<Instant>)
     -> LifeOrDeath {
         if !self.input_allowed { return Ok(()) }
         for ch in input.chars() {
@@ -774,13 +800,9 @@ impl TtyState {
                 // Control-L (clear screen)
                 '\u{000C}' => self.handle_clear()?,
                 // Control-N (history next)
-                '\u{000E}' => {
-                    // TODO: history
-                },
+                '\u{000E}' => self.history_next()?,
                 // Control-P (history previous)
-                '\u{0010}' => {
-                    // TODO: history
-                },
+                '\u{0010}' => self.history_prev()?,
                 // Control-T
                 '\u{0014}' => tx.send(Response::Info)?,
                 // Control-U (kill line before cursor)
@@ -807,7 +829,7 @@ impl TtyState {
                     tx.send(Response::Break)?;
                 },
                 // Enter/return
-                '\n' | '\r' => self.handle_return(tx)?,
+                '\n' | '\r' => self.handle_return(tx, ded_tx)?,
                 // Backspace
                 '\u{0008}' | '\u{007F}'
                     => self.handle_delete_back()?,
@@ -822,7 +844,7 @@ impl TtyState {
         Ok(())
     }
     fn handle_event(&mut self, tx: &mut tokio_mpsc::UnboundedSender<Response>,
-                    event: Event)
+                    event: Event, ded_tx: &mut std_mpsc::SyncSender<Instant>)
         -> LifeOrDeath {
         if !self.input_allowed { return Ok(()) }
         match event {
@@ -851,13 +873,9 @@ impl TtyState {
                         // Control-L (clear screen)
                         KeyCode::Char('l') => self.handle_clear()?,
                         // Control-N (history next)
-                        KeyCode::Char('n') => {
-                            // TODO: history
-                        },
+                        KeyCode::Char('n') => self.history_next()?,
                         // Control-P (history previous)
-                        KeyCode::Char('p') => {
-                            // TODO: history
-                        },
+                        KeyCode::Char('p') => self.history_prev()?,
                         // Control-T
                         KeyCode::Char('t') =>tx.send(Response::Info)?,
                         // Control-U (kill line before cursor)
@@ -881,7 +899,7 @@ impl TtyState {
                         },
                         // Control-J/Control-M = return
                         KeyCode::Char('j') | KeyCode::Char('m')
-                            => self.handle_return(tx)?,
+                            => self.handle_return(tx, ded_tx)?,
                         // Unknown control character
                         KeyCode::Char(x) => {
                             if x >= '\u{0040}' && x <= '\u{007e}' {
@@ -906,13 +924,13 @@ impl TtyState {
                         KeyCode::Esc =>
                             tx.send(Response::Escape)?,
                         KeyCode::Enter
-                            => self.handle_return(tx)?,
+                            => self.handle_return(tx, ded_tx)?,
                         KeyCode::Backspace
                             => self.handle_delete_back()?,
                         KeyCode::Delete
                             => self.handle_delete_fore()?,
-                        KeyCode::Up => (), // TODO history
-                        KeyCode::Down => (), // TODO history
+                        KeyCode::Up => self.history_prev()?,
+                        KeyCode::Down => self.history_next()?,
                         KeyCode::Left
                             => self.handle_left_arrow()?,
                         KeyCode::Right
@@ -925,6 +943,66 @@ impl TtyState {
                     }
                 }
             }
+        }
+        Ok(())
+    }
+    fn show_notice(&mut self, line: Line, duration: Duration, ded_tx: &mut std_mpsc::SyncSender<Instant>) -> LifeOrDeath {
+        self.rollout_needed = true;
+        let deadline = Instant::now() + duration;
+        self.notice = Some((line, deadline));
+        ded_tx.send(deadline)?;
+        Ok(())
+    }
+    fn history_prev(&mut self) -> LifeOrDeath {
+        let history = self.history.read().unwrap();
+        let prev_history_index = match self.cur_history_index {
+            None => history.get_lines().len().checked_sub(1),
+            Some(x) if x > 0 => Some(x - 1),
+            _ => None,
+        };
+        match prev_history_index {
+            None => {
+                let mut term = self.term.borrow_mut();
+                term.bell()?;
+            },
+            Some(prev_history_index) => {
+                self.rollout_needed = true;
+                let mut historical_line = history.get_lines()[prev_history_index].clone();
+                swap(&mut historical_line, &mut self.input);
+                if self.orphaned_new_input.is_none() {
+                    self.orphaned_new_input = Some(historical_line);
+                }
+                self.input_cursor = self.input.len();
+                self.cur_history_index = Some(prev_history_index);
+            },
+        }
+        Ok(())
+    }
+    fn history_next(&mut self) -> LifeOrDeath {
+        let history = self.history.read().unwrap();
+        match self.cur_history_index {
+            None => {
+                let mut term = self.term.borrow_mut();
+                term.bell()?;
+            },
+            Some(x) if x + 1 == history.get_lines().len() => {
+                assert!(self.orphaned_new_input.is_some());
+                self.rollout_needed = true;
+                self.input = self.orphaned_new_input.take().unwrap();
+                self.input_cursor = self.input.len();
+                self.cur_history_index = None;
+            },
+            Some(x) => {
+                let next_history_index = x + 1;
+                self.rollout_needed = true;
+                let mut historical_line = history.get_lines()[next_history_index].clone();
+                swap(&mut historical_line, &mut self.input);
+                if self.orphaned_new_input.is_none() {
+                    self.orphaned_new_input = Some(historical_line);
+                }
+                self.input_cursor = self.input.len();
+                self.cur_history_index = Some(next_history_index);
+            },
         }
         Ok(())
     }
@@ -1045,6 +1123,8 @@ fn tty_worker(req_tx: std_mpsc::Sender<Request>,
         term: RefCell::new(term), rollout_needed: false,
         clipboard: String::new(),
         #[cfg(feature="history")] history,
+        #[cfg(feature="history")] cur_history_index: None,
+        #[cfg(feature="history")] orphaned_new_input: None,
     };
     'outer: while let Ok(request) = rx.recv() {
         if let Request::Die = request { break }
