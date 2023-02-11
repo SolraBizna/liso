@@ -76,6 +76,8 @@ struct TtyState {
     remembered_output: Option<RememberedOutput>,
     rollout_needed: bool,
     term: RefCell<Box<dyn Term>>,
+    #[cfg(feature="history")]
+    history: Arc<RwLock<History>>,
 }
 
 impl TtyState {
@@ -501,6 +503,8 @@ impl TtyState {
                 }
             },
             Request::Custom(x) => tx.send(Response::Custom(x))?,
+            #[cfg(feature="history")]
+            Request::BumpHistory => todo!(),
         }
         Ok(())
     }
@@ -997,7 +1001,8 @@ impl TtyState {
 /// is, we believe we have a terminal crossterm supports and NO PIPES.
 fn tty_worker(req_tx: std_mpsc::Sender<Request>,
               rx: std_mpsc::Receiver<Request>,
-              mut tx: tokio_mpsc::UnboundedSender<Response>)
+              mut tx: tokio_mpsc::UnboundedSender<Response>,
+              #[cfg(feature="history")] history: Arc<RwLock<History>>)
     -> LifeOrDeath {
     let req_tx_clone = req_tx.clone();
     let (mut ded_tx, ded_rx) = std_mpsc::sync_channel(5);
@@ -1039,6 +1044,7 @@ fn tty_worker(req_tx: std_mpsc::Sender<Request>,
         input_allowed: true, input: String::new(), input_cursor: 0,
         term: RefCell::new(term), rollout_needed: false,
         clipboard: String::new(),
+        #[cfg(feature="history")] history,
     };
     'outer: while let Ok(request) = rx.recv() {
         if let Request::Die = request { break }
@@ -1069,13 +1075,17 @@ fn is_pipe_term(input: Option<&str>) -> bool {
 
 pub(crate) fn worker(req_tx: std_mpsc::Sender<Request>,
                      rx: std_mpsc::Receiver<Request>,
-                     tx: tokio_mpsc::UnboundedSender<Response>)
+                     tx: tokio_mpsc::UnboundedSender<Response>,
+                     #[cfg(feature="history")] history: Arc<RwLock<History>>)
 -> LifeOrDeath {
     if !(std::io::stdout().is_tty() && std::io::stdin().is_tty())
     || is_pipe_term(std::env::var("TERM").as_ref().ok().map(String::as_str)) {
         return pipe_worker(req_tx, rx, tx)
     }
     else {
-        return tty_worker(req_tx, rx, tx)
+        #[cfg(feature="history")]
+        return tty_worker(req_tx, rx, tx, history);
+        #[cfg(not(feature="history"))]
+        return tty_worker(req_tx, rx, tx);
     }
 }

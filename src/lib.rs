@@ -73,6 +73,11 @@ use std::{
     sync::mpsc as std_mpsc,
 };
 
+#[cfg(feature="history")]
+use std::{
+    sync::{Arc, RwLock, RwLockReadGuard},
+};
+
 use bitflags::bitflags;
 use crossterm::style::{
     Color as CtColor,
@@ -299,6 +304,8 @@ pub struct OutputOnly(Output);
 pub struct InputOutput {
     output: Output,
     rx: tokio_mpsc::UnboundedReceiver<Response>,
+    #[cfg(feature="history")]
+    history: Arc<RwLock<History>>,
     death_count: u32,
 }
 
@@ -768,6 +775,9 @@ enum Request {
     CrosstermEvent(crossterm::event::Event),
     /// Sent by `send_custom`.
     Custom(Box<dyn Any + Send>),
+    /// Sent when the `History` is changed.
+    #[cfg(feature="history")]
+    BumpHistory,
 }
 
 /// Input received from the user, or a special condition. Returned by any of
@@ -1100,16 +1110,24 @@ impl InputOutput {
         let (request_tx, request_rx) = std_mpsc::channel();
         let (response_tx, response_rx) = tokio_mpsc::unbounded_channel();
         let request_tx_clone = request_tx.clone();
+        let history = Arc::new(RwLock::new(History::new()));
+        let history_clone = history.clone();
         std::thread::Builder::new().name("Liso output thread".to_owned())
             .spawn(move || {
+                #[cfg(feature="history")] 
                 let _ =
-                    worker::worker(request_tx_clone, request_rx, response_tx);
+                    worker::worker(request_tx_clone, request_rx, response_tx, history_clone);
+                #[cfg(not(feature="history"))] 
+                let _ =
+                    worker::worker(request_tx_clone, request_rx, response_tx, history_clone);
             })
             .unwrap();
         InputOutput {
             output: Output { tx: request_tx },
             rx: response_rx,
             death_count: 0,
+            #[cfg(feature="history")]
+            history,
         }
     }
     /// Erase the prompt/status lines, put the terminal in a sensible mode,
@@ -1254,6 +1272,22 @@ impl InputOutput {
             Err(TryRecvError::Disconnected) => { self.report_death(); Some(Response::Dead) },
             Err(TryRecvError::Empty) => None,
         }
+    }
+    /// Provide a new `History` for Liso to use. Returns the old `History`
+    /// instance.
+    #[cfg(feature="history")]
+    pub fn swap_history(&self, mut history: History) -> History {
+        let mut lock = self.history.write().unwrap();
+        std::mem::swap(&mut history, &mut *lock);
+        drop(lock);
+        let _ = self.tx.send(Request::BumpHistory);
+        history
+    }
+    /// Lock the `History` for reading and return a reference to it. Make it
+    /// brief!
+    #[cfg(feature="history")]
+    pub fn read_history(&self) -> RwLockReadGuard<History> {
+        self.history.read().unwrap()
     }
 }
 
@@ -1724,3 +1758,8 @@ pub type Sender = OutputOnly;
 
 /// Used to prevent multiple Liso instances from being active at once.
 static LISO_IS_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+#[cfg(feature="history")]
+mod history;
+#[cfg(feature="history")]
+pub use history::*;
