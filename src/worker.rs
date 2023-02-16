@@ -79,10 +79,18 @@ struct TtyState {
     own_output: Output,
     #[cfg(feature="history")]
     history: Arc<RwLock<History>>,
+    /// `None` = editing the "new" line. `Some(i)` = editing a line that
+    /// originated in history.
     #[cfg(feature="history")]
     cur_history_index: Option<usize>,
+    /// Input that was on the "new" line, not originally part of history.
     #[cfg(feature="history")]
     orphaned_new_input: Option<String>,
+    /// What the currently selected history line looked like before any edits
+    /// we might have performed. (Used when history is bumped, to try to find
+    /// our place again.)
+    #[cfg(feature="history")]
+    history_original_line: Option<String>,
     #[cfg(feature="completion")]
     completor: Option<Box<dyn Completor>>,
     #[cfg(feature="completion")]
@@ -494,6 +502,7 @@ impl TtyState {
                         #[cfg(feature="history")] {
                             self.cur_history_index = None;
                             self.orphaned_new_input = None;
+                            self.history_original_line = None;
                         }
                     }
                 }
@@ -516,7 +525,30 @@ impl TtyState {
             },
             Request::Custom(x) => tx.send(Response::Custom(x))?,
             #[cfg(feature="history")]
-            Request::BumpHistory => todo!(),
+            Request::BumpHistory => {
+                if self.cur_history_index.is_some() {
+                    let history = self.history.read().unwrap();
+                    let lines = history.get_lines();
+                    self.cur_history_index = None;
+                    if let Some(history_original_line) = self.history_original_line.as_ref() {
+                        for (i, x) in lines.iter().enumerate().rev() {
+                            if x == history_original_line {
+                                self.cur_history_index = Some(i);
+                                break;
+                            }
+                        }
+                    }
+                    match self.cur_history_index {
+                        None => {
+                            self.orphaned_new_input = None;
+                            self.history_original_line = None;
+                        },
+                        Some(x) => {
+                            self.history_original_line = Some(lines[x].clone());
+                        },
+                    }
+                }
+            },
             #[cfg(feature="completion")]
             Request::SetCompletor(completor) => self.completor = completor,
         }
@@ -631,6 +663,7 @@ impl TtyState {
         #[cfg(feature="history")] {
             self.cur_history_index = None;
             self.orphaned_new_input = None;
+            self.history_original_line = None;
         }
         let was_empty = input.is_empty();
         tx.send(Response::Discarded(input))?;
@@ -755,6 +788,7 @@ impl TtyState {
         #[cfg(feature="history")] {
             self.cur_history_index = None;
             self.orphaned_new_input = None;
+            self.history_original_line = None;
             let mut lock = self.history.write().unwrap();
             if let Err(e) = lock.add_line(input.clone()) {
                 // TODO: make localizable
@@ -777,6 +811,7 @@ impl TtyState {
             #[cfg(feature="history")] {
                 self.cur_history_index = None;
                 self.orphaned_new_input = None;
+                self.history_original_line = None;
             }
             self.input_cursor = 0;
         }
@@ -986,6 +1021,7 @@ impl TtyState {
                 self.cur_history_index = Some(prev_history_index);
             },
         }
+        self.history_original_line = self.cur_history_index.map(|i| history.get_lines()[i].clone());
         Ok(())
     }
     fn history_next(&mut self) -> LifeOrDeath {
@@ -1014,6 +1050,7 @@ impl TtyState {
                 self.cur_history_index = Some(next_history_index);
             },
         }
+        self.history_original_line = self.cur_history_index.map(|i| history.get_lines()[i].clone());
         Ok(())
     }
     #[cfg(unix)]
@@ -1168,6 +1205,7 @@ fn tty_worker(req_tx: std_mpsc::Sender<Request>,
         #[cfg(feature="history")] history,
         #[cfg(feature="history")] cur_history_index: None,
         #[cfg(feature="history")] orphaned_new_input: None,
+        #[cfg(feature="history")] history_original_line: None,
         #[cfg(feature="completion")] completor: None,
         #[cfg(feature="completion")] consecutive_completion_presses: 0,
         #[cfg(feature="completion")] own_output: Output { tx: req_tx },
