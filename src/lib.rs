@@ -62,6 +62,14 @@
 //! to make it backed by a file, and see [`History`](struct.History.html) for
 //! more information.
 //! 
+//! # Completion
+//! 
+//! If the `completion` feature is enabled (which it is by default), Liso
+//! supports tab completion. Implement [`Completor`](trait.Completor.html),
+//! then use [`set_completor`](struct.Output.html#method.set_completor) to make
+//! your new completor active. See the linked documentation for more
+//! information.
+//! 
 //! # Pipe mode
 //! 
 //! If *either* stdin or stdout is not a tty, *or* the `TERM` environment
@@ -92,6 +100,9 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard},
 };
 
+#[cfg(feature="completion")]
+use std::num::NonZeroU32;
+
 use bitflags::bitflags;
 use crossterm::style::{
     Color as CtColor,
@@ -105,6 +116,16 @@ mod worker;
 mod term;
 use term::*;
 #[cfg(unix)] mod unix_util;
+
+#[cfg(feature="history")]
+mod history;
+#[cfg(feature="history")]
+pub use history::*;
+
+#[cfg(feature="completion")]
+mod completion;
+#[cfg(feature="completion")]
+pub use completion::*;
 
 /// When handling input ourselves, this is the amount of time to wait after
 /// receiving an escape before we're sure we don't have an escape sequence on
@@ -792,6 +813,9 @@ enum Request {
     /// Sent when the `History` is changed.
     #[cfg(feature="history")]
     BumpHistory,
+    /// Sent when the `Completor` is to be replaced.
+    #[cfg(feature="completion")]
+    SetCompletor(Option<Box<dyn Completor>>),
 }
 
 /// Input received from the user, or a special condition. Returned by any of
@@ -1098,6 +1122,11 @@ impl Output {
         self.tx.send(Request::Custom(value))
             .expect("Liso output has stopped")
     }
+    /// Provide a new `Completor` for doing tab completion.
+    #[cfg(feature="completion")]
+    pub fn set_completor(&self, completor: Option<Box<dyn Completor>>) {
+        let _ = self.tx.send(Request::SetCompletor(completor));
+    }
 }
 
 impl Drop for InputOutput {
@@ -1133,7 +1162,7 @@ impl InputOutput {
                     worker::worker(request_tx_clone, request_rx, response_tx, history_clone);
                 #[cfg(not(feature="history"))] 
                 let _ =
-                    worker::worker(request_tx_clone, request_rx, response_tx, history_clone);
+                    worker::worker(request_tx_clone, request_rx, response_tx);
             })
             .unwrap();
         InputOutput {
@@ -1772,8 +1801,3 @@ pub type Sender = OutputOnly;
 
 /// Used to prevent multiple Liso instances from being active at once.
 static LISO_IS_ACTIVE: AtomicBool = AtomicBool::new(false);
-
-#[cfg(feature="history")]
-mod history;
-#[cfg(feature="history")]
-pub use history::*;

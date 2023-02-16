@@ -3,7 +3,7 @@ members = [".", "examples/fight", "examples/lish"]
 
 [package]
 name = "liso"
-version = "0.8.0"
+version = "0.8.1"
 description = "Line Input with Simultaneous Output: input lines are editable, output lines are never scrambled, and all of it thread safe."
 authors = ["Solra Bizna <solra@bizna.name>"]
 edition = "2021"
@@ -23,6 +23,7 @@ textwrap = {version = "0.15", optional = true}
 nix = {version = "0.25", default-features = false, features=["signal"]}
 
 [features]
-default = ["wrap", "history"]
+default = ["wrap", "history", "completion"]
 wrap = ["textwrap"]
 history = []
+completion = []

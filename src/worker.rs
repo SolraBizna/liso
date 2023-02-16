@@ -76,12 +76,17 @@ struct TtyState {
     remembered_output: Option<RememberedOutput>,
     rollout_needed: bool,
     term: RefCell<Box<dyn Term>>,
+    own_output: Output,
     #[cfg(feature="history")]
     history: Arc<RwLock<History>>,
     #[cfg(feature="history")]
     cur_history_index: Option<usize>,
     #[cfg(feature="history")]
     orphaned_new_input: Option<String>,
+    #[cfg(feature="completion")]
+    completor: Option<Box<dyn Completor>>,
+    #[cfg(feature="completion")]
+    consecutive_completion_presses: u32,
 }
 
 impl TtyState {
@@ -512,6 +517,8 @@ impl TtyState {
             Request::Custom(x) => tx.send(Response::Custom(x))?,
             #[cfg(feature="history")]
             Request::BumpHistory => todo!(),
+            #[cfg(feature="completion")]
+            Request::SetCompletor(completor) => self.completor = completor,
         }
         Ok(())
     }
@@ -780,6 +787,9 @@ impl TtyState {
     -> LifeOrDeath {
         if !self.input_allowed { return Ok(()) }
         for ch in input.chars() {
+            #[cfg(feature="completion")]
+            if ch == '\t' { self.consecutive_completion_presses = self.consecutive_completion_presses.saturating_add(1); }
+            else { self.consecutive_completion_presses = 0; }
             match ch {
                 // Control-A (go to beginning of line)
                 '\u{0001}' => self.handle_home()?,
@@ -817,9 +827,7 @@ impl TtyState {
                 // Control-Z
                 '\u{001A}' => self.handle_suspend()?,
                 // Tab
-                '\t' => {
-                    // TODO completion
-                },
+                '\t' => self.handle_completion()?,
                 // Escape
                 '\u{001B}' => {
                     tx.send(Response::Escape)?;
@@ -853,6 +861,9 @@ impl TtyState {
             Event::Key(k) => {
                 use crossterm::event::{KeyCode, KeyModifiers};
                 if k.modifiers.contains(KeyModifiers::CONTROL) {
+                    #[cfg(feature="completion")]
+                    if k.code == KeyCode::Char('i') { self.consecutive_completion_presses = self.consecutive_completion_presses.saturating_add(1); }
+                    else { self.consecutive_completion_presses = 0; } 
                     match k.code {
                         // Control-A (go to beginning of line)
                         KeyCode::Char('a') => self.handle_home()?,
@@ -894,9 +905,7 @@ impl TtyState {
                             tx.send(Response::Break)?;
                         },
                         // Control-I (Tab)
-                        KeyCode::Char('i') => {
-                            // TODO completion
-                        },
+                        KeyCode::Char('i') => self.handle_completion()?,
                         // Control-J/Control-M = return
                         KeyCode::Char('j') | KeyCode::Char('m')
                             => self.handle_return(tx, ded_tx)?,
@@ -910,6 +919,9 @@ impl TtyState {
                     }
                 }
                 else {
+                    #[cfg(feature="completion")]
+                    if k.code == KeyCode::Tab { self.consecutive_completion_presses = self.consecutive_completion_presses.saturating_add(1); }
+                    else { self.consecutive_completion_presses = 0; }        
                     match k.code {
                         // Printable(?) text(??)
                         KeyCode::Char(ch) => {
@@ -918,9 +930,7 @@ impl TtyState {
                                self.handle_char_input(ch)?
                             }
                         },
-                        KeyCode::Tab => {
-                            // TODO completion
-                        },
+                        KeyCode::Tab => self.handle_completion()?,
                         KeyCode::Esc =>
                             tx.send(Response::Escape)?,
                         KeyCode::Enter
@@ -1017,6 +1027,39 @@ impl TtyState {
         unix_util::sigstop_ourselves();
         term.unsuspend()?;
         self.rollout_needed = true;
+        Ok(())
+    }
+    fn handle_completion(&mut self) -> LifeOrDeath {
+        #[cfg(feature="completion")] {
+            if let Some(completor) = self.completor.as_mut() {
+                match completor.complete(&self.own_output, &self.input, self.input_cursor, NonZeroU32::new(self.consecutive_completion_presses).unwrap()) {
+                    // DO NOT beep, print a notice, etc. They are supposed to
+                    // have done that themselves.
+                    None => (),
+                    Some(Completion::InsertAtCursor { text }) => {
+                        if !text.is_empty() {
+                            self.rollout_needed = true;
+                            self.input.insert_str(self.input_cursor, &text);
+                            self.input_cursor += text.len();
+                        }
+                    },
+                    Some(Completion::ReplaceWholeLine { new_line, new_cursor }) => {
+                        if new_cursor > new_line.len() {
+                            panic!("Bug: Completor gave a new input cursor out of range for the string!");
+                        }
+                        if new_line != self.input || new_cursor != self.input_cursor {
+                            self.rollout_needed = true;
+                            self.input = new_line;
+                            self.input_cursor = new_cursor;
+                        }
+                    },
+                }
+            }
+        }
+        #[cfg(not(feature="completion"))] {
+            // TODO: localized "completion is not supported" message?
+            self.term.borrow_mut().bell()?;
+        }
         Ok(())
     }
     pub fn rollin(&mut self) -> LifeOrDeath {
@@ -1125,6 +1168,9 @@ fn tty_worker(req_tx: std_mpsc::Sender<Request>,
         #[cfg(feature="history")] history,
         #[cfg(feature="history")] cur_history_index: None,
         #[cfg(feature="history")] orphaned_new_input: None,
+        #[cfg(feature="completion")] completor: None,
+        #[cfg(feature="completion")] consecutive_completion_presses: 0,
+        #[cfg(feature="completion")] own_output: Output { tx: req_tx },
     };
     'outer: while let Ok(request) = rx.recv() {
         if let Request::Die = request { break }

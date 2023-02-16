@@ -21,6 +21,7 @@ struct Fight {
 impl Fight {
     fn play() {
         let io = InputOutput::new();
+        io.set_completor(Some(Box::new(FightCompletor)));
         io.wrapln(liso!(bold, "Welcome to Fight!"));
         io.wrapln("Your goal in life is to defeat this evil monster, before \
                       they can defeat you!");
@@ -141,6 +142,20 @@ impl Fight {
             plain,
             " damage."
         ]);
+    }
+}
+struct FightCompletor;
+
+impl Completor for FightCompletor {
+    fn complete(&mut self, output: &Output, input: &str, _cursor: usize, _consecutive_presses: std::num::NonZeroU32) -> Option<Completion> {
+        match input.chars().next() {
+            Some('a') | Some('A') => Some(Completion::ReplaceWholeLine { new_line: "attack".to_owned(), new_cursor: 6 }),
+            Some('p') | Some('P') => Some(Completion::ReplaceWholeLine { new_line: "potion".to_owned(), new_cursor: 6 }),
+            _ => {
+                output.notice("Choices are \"attack\" or \"potion\"", Duration::from_secs(5));
+                None
+            },
+        }
     }
 }
 

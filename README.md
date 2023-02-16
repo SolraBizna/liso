@@ -9,8 +9,9 @@ Main features:
 - Status line, displayed above input and below output
 - Pipeline-savvy (interactivity features are automatically disabled when used in a pipeline)
 - Optional async support (with `tokio`)
-- Optional history support (feature flag `history`)
-- Optional line wrapping (feature flag `wrap` and the `wrapln` function)
+- Optional history support (if feature flag `history` is not disabled)
+- Optional line wrapping (via the `wrapln` function, if the feature flag `wrap` is not disabled)
+- Optional tab completion support (if the feature flag `completion` is not disabled)
 
 Supported platforms:
 
@@ -67,7 +68,7 @@ I have no idea how well Liso works for visually-impaired users. If you use comma
 
 # Future
 
-Tab completion is on the roadmap. Perhaps, someday, RTL / bidirectional support as well.
+Localized error messages would be very nice to have. I would also love to add RTL / bidirectional support some day.
 
 # Legalese
 
