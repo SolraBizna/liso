@@ -1039,7 +1039,7 @@ impl Output {
     /// information for you at the end of a `Line`.
     ///
     /// Note: When running in pipe mode, input is always allowed, there is no
-    /// way to clear buffered input, and promps are never displayed. In short,
+    /// way to clear buffered input, and prompts are never displayed. In short,
     /// this function does nothing at all in pipe mode.
     ///
     /// Note: As usual with `Output` methods, you can pass a
