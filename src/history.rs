@@ -49,8 +49,9 @@ impl History {
     /// - Autosave to given file, carefully avoiding common pitfalls
     /// - Autosave only on drop
     /// 
-    /// Will not return an error if the file simply doesn't exist. Will return
-    /// an error if it can't be opened or read for other reasons.
+    /// If the file doesn't exist yet, the returned history will start out
+    /// empty. If it can't be opened for some other reason, will return an
+    /// error.
     pub fn from_file<P: AsRef<Path>>(path: P) -> io::Result<History> {
         let history_path = PathBuf::from(path.as_ref());
         let mut filename = match history_path.file_name() {

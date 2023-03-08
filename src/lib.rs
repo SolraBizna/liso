@@ -56,7 +56,8 @@
 //! 
 //! ```rust
 //! # let io = liso::InputOutput::new();
-//! io.swap_history(liso::History::from_file(some_path));
+//! # let some_path = "DefinitelyDoesNotExist";
+//! io.swap_history(liso::History::from_file(some_path).unwrap());
 //! ```
 //! 
 //! to make it backed by a file, and see [`History`](struct.History.html) for
