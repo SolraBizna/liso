@@ -72,7 +72,7 @@ Localized error messages would be very nice to have. I would also love to add RT
 
 # Legalese
 
-Liso is copyright 2022, Solra Bizna, and licensed under either of:
+Liso is copyright 2022 and 2023, Solra Bizna, and licensed under either of:
 
  * Apache License, Version 2.0
    ([LICENSE-APACHE](LICENSE-APACHE) or
