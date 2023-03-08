@@ -689,29 +689,44 @@ impl Line {
     #[cfg(feature="wrap")]
     pub fn wrap_to_width(&mut self, width: usize) {
         assert!(width > 0);
-        let wrap_vec = textwrap::wrap(&self.text, width);
-        let mut edit_vec = Vec::with_capacity(wrap_vec.len());
-        let mut cur_end = 0;
-        for el in wrap_vec.into_iter() {
-            // We're pretty sure we didn't use any features that would require
-            // an owned Cow. In fact, if we're wrong, the whole feature won't
-            // work.
-            let slice = match el {
-                Cow::Borrowed(x) => x,
-                Cow::Owned(_)
-                => panic!("We needed textwrap to do borrows only!"),
-            };
-            let (start, end) = convert_subset_slice_to_range(&self.text,slice);
-            debug_assert!(start <= end);
-            if start == end { continue }
-            assert!(start >= cur_end);
-            if start != 0 {
-                edit_vec.push(cur_end..start);
+        let newline_positions: Vec<usize>
+        = self.text.chars().enumerate().filter_map(|(n,c)| {
+            if c == '\n' { Some(n) }
+            else { None }
+        }).chain(Some(self.text.len())).collect();
+        let start_iter = newline_positions.iter().rev()
+            .skip(1).map(|x| *x+1).chain(Some(0usize));
+        let end_iter = newline_positions.iter().rev();
+        for (start, &end) in start_iter.zip(end_iter) {
+            dbg!((start, end));
+            dbg!(&self.text);
+            if start >= end { continue }
+            let wrap_vec = textwrap::wrap(&self.text[start..end], width);
+            let mut edit_vec = Vec::with_capacity(wrap_vec.len());
+            let mut cur_end = start;
+            for el in wrap_vec.into_iter() {
+                // We're pretty sure we didn't use any features that would require
+                // an owned Cow. In fact, if we're wrong, the whole feature won't
+                // work.
+                let slice = match el {
+                    Cow::Borrowed(x) => x,
+                    Cow::Owned(_)
+                    => panic!("We needed textwrap to do borrows only!"),
+                };
+                let (start, end) = convert_subset_slice_to_range(&self.text,slice);
+                debug_assert!(start <= end);
+                if start == end { continue }
+                assert!(start >= cur_end);
+                if start != 0 {
+                    edit_vec.push(cur_end..start);
+                }
+                cur_end = end;
             }
-            cur_end = end;
-        }
-        for range in edit_vec.into_iter().rev() {
-            self.erase_and_insert_newline(range);
+            for range in edit_vec.into_iter().rev() {
+                if range.start > 0 && self.text.as_bytes()[range.start-1] == b'\n' { continue }
+                eprintln!("Erase: {:?}", range);
+                self.erase_and_insert_newline(range);
+            }
         }
     }
     // Internal use only.
@@ -1786,6 +1801,15 @@ mod tests {
             ];
             line.wrap_to_width(n);
         }
+    }
+    #[test] #[cfg(feature="wrap")]
+    fn lange_wrap() {
+        let mut line = liso![
+            "This is a simple line wrapping test.\n\nIt has two newlines in it."
+        ];
+        line.wrap_to_width(20);
+        assert_eq!(line,
+                   liso!["This is a simple\nline wrapping test.\n\nIt has two newlines\nin it."]);
     }
 }
 
