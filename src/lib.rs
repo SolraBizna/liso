@@ -1048,7 +1048,7 @@ impl Output {
     pub fn prompt<T>(&self, line: T,
                      input_allowed: bool, clear_input: bool)
     where T: Into<Line> {
-        let line = line.into();
+        let line: Line = line.into();
         self.tx.send(Request::Prompt {
             line: if line.elements.len() == 0 { None } else { Some(line) },
             input_allowed, clear_input
