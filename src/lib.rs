@@ -699,8 +699,6 @@ impl Line {
             .skip(1).map(|x| *x+1).chain(Some(0usize));
         let end_iter = newline_positions.iter().rev();
         for (start, &end) in start_iter.zip(end_iter) {
-            dbg!((start, end));
-            dbg!(&self.text);
             if start >= end { continue }
             let wrap_vec = textwrap::wrap(&self.text[start..end], width);
             let mut edit_vec = Vec::with_capacity(wrap_vec.len());
@@ -725,7 +723,6 @@ impl Line {
             }
             for range in edit_vec.into_iter().rev() {
                 if range.start > 0 && self.text.as_bytes()[range.start-1] == b'\n' { continue }
-                eprintln!("Erase: {:?}", range);
                 self.erase_and_insert_newline(range);
             }
         }
