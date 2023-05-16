@@ -3,7 +3,7 @@ members = [".", "examples/fight"]
 
 [package]
 name = "liso"
-version = "1.0.2"
+version = "1.0.3"
 description = "Line Input with Simultaneous Output: input lines are editable, output lines are never scrambled, and all of it thread safe."
 authors = ["Solra Bizna <solra@bizna.name>"]
 edition = "2021"
