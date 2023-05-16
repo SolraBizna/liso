@@ -1212,8 +1212,9 @@ impl InputOutput {
             return
         }
         loop {
-            match self.read_blocking() {
-                Response::Dead => break,
+            match self.try_read() {
+                None => std::thread::yield_now(),
+                Some(Response::Dead) => break,
                 _ => (),
             }
         }
