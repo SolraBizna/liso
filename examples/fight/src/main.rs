@@ -164,5 +164,7 @@ fn main() {
     // We can use println here. If we've reached the end of `Fight::play()`,
     // then Liso has cleaned up after itself, and normal terminal output is
     // possible.
-    println!("Bye bye!");
+    std::println!("Bye bye!");
+    // (We have to qualify it with `std::` because Liso also provides its own
+    // `println` macro, which we *do not* want to use.)
 }

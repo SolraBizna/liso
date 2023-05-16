@@ -42,7 +42,7 @@ fn pipe_worker(req_tx: std_mpsc::Sender<Request>,
     while let Ok(request) = rx.recv() {
         match request {
             Request::Output(line) | Request::OutputWrapped(line) => {
-                println!("{}", line.text);
+                std::println!("{}", line.text);
             },
             Request::RawInput(x) => {
                 if let Err(_) = tx.send(Response::Input(x)) {
@@ -1060,7 +1060,7 @@ impl TtyState {
         let mut term = self.term.borrow_mut();
         term.set_attrs(Style::PLAIN, None, None)?;
         term.suspend()?;
-        println!("^Z");
+        std::println!("^Z");
         unix_util::sigstop_ourselves();
         term.unsuspend()?;
         self.rollout_needed = true;

@@ -19,6 +19,10 @@
 //! output through Liso, but only one thread/task can receive user input:
 //! whichever one currently holds the `InputOutput` instance.
 //! 
+//! If the `global` feature is enabled, which it is by default, then you
+//! don't *have* to create `OutputOnly` instances and keep them around in order
+//! to send output. See [the "Global" section](#global) for more information.
+//!
 //! Liso can work with `String`s and `&str`s directly. If you want to add style
 //! or color, create a [`Line`](struct.Line.html), either manually or using
 //! the convenient [`liso!` macro](macro.liso.html). Send output to the
@@ -48,6 +52,24 @@
 //! legitimate use may be to complain about an unknown control character. (See
 //! [`Response`](enum.Response.html) for an example of this use.)
 //! 
+//! # Global
+//!
+//! If the `global` feature is enabled (which it is by default), you can call
+//! [`output()`](fn.output.html) to get a valid `OutputOnly` instance any time
+//! that an `InputOutput` instance is alive. This will panic if there is *not*
+//! an `InputOutput` instance alive, so you'll still have to have one.
+//!
+//! With `global` enabled, you can also use the
+//! [`println!`](macro.println.html) or [`wrapln!`](macro.wrapln.html) macros
+//! to perform output directly and conveniently. `println!(...)` is equivalent
+//! to `output().println!(liso!(...))`.
+//!
+//! Using the `output()` function, or the `println!`/`wrapln!` macros, is
+//! noticeably less efficient than creating an `OutputOnly` instance ahead of
+//! time, whether by calling `clone_output()` or by calling `output()` and
+//! caching the result. But, it's probably okay as long as you're not hoping to
+//! do it hundreds of thousands of times per second.
+//!
 //! # History
 //! 
 //! If the `history` feature is enabled (which it is by default), Liso supports
@@ -92,9 +114,11 @@ use std::{
     any::Any,
     borrow::Cow,
     time::{Duration, Instant},
-    sync::atomic::{AtomicBool, Ordering},
     sync::mpsc as std_mpsc,
 };
+
+#[cfg(not(feature="global"))]
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(feature="history")]
 use std::{
@@ -1144,7 +1168,10 @@ impl Output {
 
 impl Drop for InputOutput {
     fn drop(&mut self) {
+        #[cfg(feature="global")]
+        { *LISO_OUTPUT_TX.lock() = None; }
         self.actually_blocking_die();
+        #[cfg(not(feature="global"))]
         LISO_IS_ACTIVE.store(false, Ordering::Release);
     }
 }
@@ -1156,12 +1183,19 @@ impl core::ops::Deref for InputOutput {
 
 impl InputOutput {
     pub fn new() -> InputOutput {
+        let we_are_alone;
+        #[cfg(feature="global")]
+        let mut global_lock = LISO_OUTPUT_TX.lock();
+        #[cfg(feature="global")]
+        { we_are_alone = global_lock.is_none(); }
+        #[cfg(not(feature="global"))]
         match LISO_IS_ACTIVE.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed) {
-            Ok(_) => (),
-            Err(_) => {
-                panic!("Tried to have multiple `liso::InputOutput` instances \
+            Ok(_) => we_are_alone = true,
+            Err(_) => we_are_alone = false,
+        }
+        if !we_are_alone {
+            panic!("Tried to have multiple `liso::InputOutput` instances \
                         active at the same time!")
-            },
         }
         let (request_tx, request_rx) = std_mpsc::channel();
         let (response_tx, response_rx) = tokio_mpsc::unbounded_channel();
@@ -1178,6 +1212,8 @@ impl InputOutput {
                     worker::worker(request_tx_clone, request_rx, response_tx);
             })
             .unwrap();
+        #[cfg(feature="global")]
+        { *global_lock = Some(request_tx.clone()); }
         InputOutput {
             output: Output { tx: request_tx },
             rx: response_rx,
@@ -1865,5 +1901,58 @@ pub type IO = InputOutput;
 #[doc(hidden)]
 pub type Sender = OutputOnly;
 
+#[cfg(not(feature="global"))]
 /// Used to prevent multiple Liso instances from being active at once.
 static LISO_IS_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+#[cfg(feature="global")]
+static LISO_OUTPUT_TX: parking_lot::Mutex<Option<std_mpsc::Sender<Request>>> = parking_lot::Mutex::new(None);
+
+/// If the `global` feature is enabled (which it is by default), and there is
+/// an [`InputOutput`](struct.InputOutput.html) alive somewhere, you can call
+/// `output()` to get an [`OutputOnly`](struct.OutputOnly.html) struct that you
+/// can use to perform output on it. This is less efficient than creating an
+/// `OutputOnly` directly with `clone_output()` and keeping it around, but it
+/// is more convenient.
+///
+/// Calling `output()` when there is no
+/// `InputOutput` alive will result in a panic.
+#[cfg(feature="global")]
+pub fn output() -> OutputOnly {
+    match &*LISO_OUTPUT_TX.lock() {
+        None => panic!("liso::output() called with no liso::InputOutput alive"),
+        Some(x) => OutputOnly(Output { tx: x.clone() }),
+    }
+}
+
+/// If the `global` feature is enabled (which it is by default), you can use
+/// `println!(...)` as convenient shorthand for `output().println(liso!(...))`.
+/// This is less efficient than creating an `OutputOnly` with `clone_output()`
+/// and keeping it around, but it is more convenient. You will have to
+/// explicitly `use liso::println;`, or call it by its full path
+/// (`liso::println!`) or Rust may be uncertain whether you meant to use this
+/// or `std::println!`. **Panics if there is no `InputOutput` instance alive.**
+///
+/// Syntax is the same as the [`liso!`](macro.liso.html) macro.
+#[cfg(feature="global")]
+#[macro_export]
+macro_rules! println {
+    ($($rest:tt)*) => {
+        $crate::output().println(liso!($($rest)*))
+    }
+}
+
+/// If the `global` and `wrap` features are enabled (which they are by
+/// default), you can use `wrapln!(...)` as convenient shorthand for
+/// `output().println(liso!(...))`. This is less efficient than creating an
+/// `OutputOnly` with `clone_output()` and keeping it around, but it is more
+/// convenient. **Panics if there is no `InputOutput` instance alive.**
+///
+/// Syntax is the same as the [`liso!`](macro.liso.html) macro.
+#[cfg(all(feature="global", feature="wrap"))]
+#[macro_export]
+macro_rules! wrapln {
+    ($($rest:tt)*) => {
+        $crate::output().wrapln(liso!($($rest)*))
+    }
+}
