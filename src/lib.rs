@@ -989,6 +989,10 @@ impl Response {
 }
 
 impl Output {
+    fn send(&self, thing: Request) {
+        self.tx.send(thing)
+            .expect("Liso output has stopped");
+    }
     /// Prints a (possibly styled) line of regular output to the screen.
     ///
     /// Note: As usual with `Output` methods, you can pass a
@@ -996,8 +1000,7 @@ impl Output {
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn println<T>(&self, line: T)
     where T: Into<Line> {
-        self.tx.send(Request::Output(line.into()))
-            .expect("Liso output has stopped")
+        self.send(Request::Output(line.into()))
     }
     /// Prints a (possibly styled) line of regular output to the screen,
     /// wrapping it to the width of the terminal. Only available with the
@@ -1008,8 +1011,7 @@ impl Output {
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn wrapln<T>(&self, line: T)
     where T: Into<Line> {
-        self.tx.send(Request::OutputWrapped(line.into()))
-            .expect("Liso output has stopped")
+        self.send(Request::OutputWrapped(line.into()))
     }
     /// Prints a (possibly styled) line of regular output to the screen, but
     /// only if we are being run interactively. Use this if you want to to echo
@@ -1021,8 +1023,7 @@ impl Output {
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn echoln<T>(&self, line: T)
     where T: Into<Line> {
-        self.tx.send(Request::OutputEcho(line.into()))
-            .expect("Liso output has stopped");
+        self.send(Request::OutputEcho(line.into()))
     }
     /// Sets the status line to the given (possibly styled) text. This will be
     /// displayed above the prompt, but below printed output. (Does nothing in
@@ -1037,8 +1038,7 @@ impl Output {
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn status<T>(&self, line: Option<T>)
     where T: Into<Line> {
-        self.tx.send(Request::Status(line.map(T::into)))
-            .expect("Liso output has stopped");
+        self.send(Request::Status(line.map(T::into)))
     }
     /// Displays a (possibly styled) notice that temporarily replaces the
     /// prompt. The notice will disappear when the allotted time elapses, when
@@ -1056,8 +1056,7 @@ impl Output {
     /// [1]: enum.Response.html
     pub fn notice<T>(&self, line: T, max_duration: Duration)
     where T: Into<Line> {
-        self.tx.send(Request::Notice(line.into(), max_duration))
-            .expect("Liso output has stopped")
+        self.send(Request::Notice(line.into(), max_duration))
     }
     /// Sets the prompt to the given (possibly styled) text. The prompt is
     /// displayed in front of the user's input, unless we are running in pipe
@@ -1086,24 +1085,23 @@ impl Output {
                      input_allowed: bool, clear_input: bool)
     where T: Into<Line> {
         let line: Line = line.into();
-        self.tx.send(Request::Prompt {
+        self.send(Request::Prompt {
             line: if line.elements.len() == 0 { None } else { Some(line) },
             input_allowed, clear_input
-        }).expect("Liso output has stopped");
+        })
     }
     /// Removes the prompt. The boolean parameters have the same meaning as for
     /// `prompt`.
     #[deprecated="Use `prompt` with a blank line instead."]
     #[doc(hidden)]
     pub fn remove_prompt(&self, input_allowed: bool, clear_input: bool) {
-        self.tx.send(Request::Prompt {
+        self.send(Request::Prompt {
             line: None, input_allowed, clear_input
-        }).expect("Liso output has stopped");
+        })
     }
     /// Get the user's attention with an audible or visible bell.
     pub fn bell(&self) {
-        self.tx.send(Request::Bell)
-            .expect("Liso output has stopped");
+        self.send(Request::Bell)
     }
     /// Use this when you need to perform some work that outputs directly to
     /// stdout/stderr and can't run it through Liso. Prompt, status, and input
@@ -1127,8 +1125,7 @@ impl Output {
     /// terminal—you have to drop the `InputOutput` instance, and all of the
     /// existing `Output` instances will go dead as a result. Just don't do it!
     pub fn suspend_and_run<F: 'static + FnMut() + Send>(&self, f: F) {
-        self.tx.send(Request::SuspendAndRun(Box::new(f)))
-            .expect("Liso output has stopped");
+        self.send(Request::SuspendAndRun(Box::new(f)))
     }
     /// Make a new `OutputOnly` that can also output to the terminal. The clone
     /// and the original can be stored in separate places, even in different
@@ -1150,19 +1147,17 @@ impl Output {
     /// Send the given value to the input thread, wrapped in a
     /// [`Response::Custom`](enum.Response.html#variant.Custom).
     pub fn send_custom<T: Any + Send>(&self, value: T) {
-        self.tx.send(Request::Custom(Box::new(value)))
-            .expect("Liso output has stopped")
+        self.send(Request::Custom(Box::new(value)))
     }
     /// Send the given already-boxed value to the input thread, wrapped in a
     /// [`Response::Custom`](enum.Response.html#variant.Custom).
     pub fn send_custom_box(&self, value: Box<dyn Any + Send>) {
-        self.tx.send(Request::Custom(value))
-            .expect("Liso output has stopped")
+        self.send(Request::Custom(value))
     }
     /// Provide a new `Completor` for doing tab completion.
     #[cfg(feature="completion")]
     pub fn set_completor(&self, completor: Option<Box<dyn Completor>>) {
-        let _ = self.tx.send(Request::SetCompletor(completor));
+        self.send(Request::SetCompletor(completor))
     }
 }
 
