@@ -730,7 +730,7 @@ impl Line {
     // Internal use only.
     #[cfg(feature="wrap")]
     fn erase_and_insert_newline(&mut self, range: std::ops::Range<usize>) {
-        let delta_bytes = range.end as isize - range.start as isize - 1;
+        let delta_bytes = 1 - (range.end as isize - range.start as isize);
         self.text.replace_range(range.clone(), "\n");
         let mut elements_len = self.elements.len();
         let mut i = self.elements.len();
@@ -738,13 +738,13 @@ impl Line {
             if i == 0 { break }
             i -= 1;
             let element = &mut self.elements[i];
-            if element.end > range.end {
+            if element.end >= range.end {
                 element.end = ((element.end as isize) + delta_bytes) as usize;
             }
             else if element.end > range.start {
                 element.end = range.start;
             }
-            if element.start > range.end {
+            if element.start >= range.end {
                 element.start = ((element.start as isize) + delta_bytes) as usize;
             }
             else if element.start > range.start {
@@ -1809,6 +1809,49 @@ mod tests {
         line.wrap_to_width(20);
         assert_eq!(line,
                    liso!["This is a simple\nline wrapping test.\n\nIt has two newlines\nin it."]);
+    }
+    #[test] #[cfg(feature="wrap")]
+    fn sehr_lagne_wrap() {
+        const UNWRAPPED: &str = r#"Mike House was Gegory Houses' borther. He was a world renounced doctor from England, London. His arm was cut off in a fetal MIR incident so he had to walk around with a segway. When he leaned forward, the segway would go real fast. One day, Mike House had a new case for his crack team of other doctors that were pretty good, but not as good as Mike House. So Mike House told them, "WE HAVE A NEW CASE!" And the team said, "ALRIGHT!" And then Mike House said, "IF WE DO NOT SAVE HIM, HE WILL DIE!""#;
+        const WRAPPED: &str = r#"Mike House was
+Gegory Houses'
+borther. He was
+a world renounced
+doctor from England,
+London. His arm was
+cut off in a fetal
+MIR incident so he
+had to walk around
+with a segway. When
+he leaned forward,
+the segway would
+go real fast. One
+day, Mike House
+had a new case for
+his crack team of
+other doctors that
+were pretty good,
+but not as good as
+Mike House. So Mike
+House told them, "WE
+HAVE A NEW CASE!"
+And the team said,
+"ALRIGHT!" And then
+Mike House said, "IF
+WE DO NOT SAVE HIM,
+HE WILL DIE!""#;
+        let mut line = Line::from_str(UNWRAPPED);
+        line.wrap_to_width(20);
+        assert_eq!(line.text, WRAPPED);
+        assert_eq!(line.elements.last().unwrap().end, line.text.len());
+    }
+    #[test] #[cfg(feature="wrap")]
+    fn non_synthetic_wrap() {
+        let src_line = liso!(bold, fg=yellow, "WARNING: ", reset, "\"/home/sbizna/././././././././nobackup/eph/deleteme/d\" and \"/home/sbizna/././././././././nobackup/eph/deleteme/b\" were identical, but will have differing permissions!");
+        let dst_line = liso!(bold, fg=yellow, "WARNING: ", reset, "\"/home/sbizna/././././././././nobackup/eph/deleteme/d\" and \"/home/\nsbizna/././././././././nobackup/eph/deleteme/b\" were identical, but will have\ndiffering permissions!");
+        let mut line = src_line.clone();
+        line.wrap_to_width(80);
+        assert_eq!(line, dst_line);
     }
 }
 
