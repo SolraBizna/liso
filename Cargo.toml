@@ -15,17 +15,27 @@ categories = ["command-line-interface"]
 [dependencies]
 bitflags = "1.3"
 crossterm = "0.23"
+errno = {version = "0.3.1", optional = true}
+libc = {version = "0.2.144", optional = true}
 parking_lot = {version = "0.12", optional = true}
 tokio = {version = "1.21", default-features = false, features = ["rt", "sync", "time"]}
 textwrap = {version = "0.15", optional = true}
 unicode-width = "0.1.9"
 
 [target.'cfg(unix)'.dependencies]
-nix = {version = "0.25", default-features = false, features=["signal"]}
+nix = {version = "0.25", default-features = false, features=["signal", "fs"]}
 
 [features]
 default = ["wrap", "history", "completion", "global"]
-wrap = ["textwrap"]
-history = []
+# Best-effort attempt to capture stderr and route it through liso. Not a
+# supported feature. Experimental.
+capture-stderr = ["libc", "errno"]
+# Tab-completion support.
 completion = []
+# Global `output()` function and `println!`/`wrapln!` macros. No plumbing
+# required.
 global = ["parking_lot"]
+# History support.
+history = []
+# `wrapln()` function.
+wrap = ["textwrap"]

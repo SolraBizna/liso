@@ -152,6 +152,9 @@ mod completion;
 #[cfg(feature="completion")]
 pub use completion::*;
 
+#[cfg(feature="capture-stderr")]
+mod stderr_capture;
+
 /// When handling input ourselves, this is the amount of time to wait after
 /// receiving an escape before we're sure we don't have an escape sequence on
 /// our hands.
@@ -853,6 +856,9 @@ enum Request {
     /// Sent when the `Completor` is to be replaced.
     #[cfg(feature="completion")]
     SetCompletor(Option<Box<dyn Completor>>),
+    /// Sent when some captured stderr is received.
+    #[cfg(feature="capture-stderr")]
+    StderrLine(String),
 }
 
 /// Input received from the user, or a special condition. Returned by any of
@@ -1168,6 +1174,8 @@ impl Drop for InputOutput {
         self.actually_blocking_die();
         #[cfg(not(feature="global"))]
         LISO_IS_ACTIVE.store(false, Ordering::Release);
+        #[cfg(feature="capture-stderr")]
+        stderr_capture::wait_until_not_captured();
     }
 }
 

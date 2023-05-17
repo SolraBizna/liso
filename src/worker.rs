@@ -44,6 +44,9 @@ fn pipe_worker(req_tx: std_mpsc::Sender<Request>,
             Request::Output(line) | Request::OutputWrapped(line) => {
                 std::println!("{}", line.text);
             },
+            // stderr will not be captured if the pipe worker is being used.
+            #[cfg(feature="capture-stderr")]
+            Request::StderrLine(_) => unreachable!(),
             Request::RawInput(x) => {
                 if let Err(_) = tx.send(Response::Input(x)) {
                     break
@@ -466,6 +469,14 @@ impl TtyState {
             Request::Output(line) | Request::OutputEcho(line) => {
                 self.rollin()?;
                 self.output_line(&line)?;
+                self.term.borrow_mut().reset_attrs()?;
+            },
+            #[cfg(feature="capture-stderr")]
+            Request::StderrLine(mut text) => {
+                if text.ends_with("\r") { text.pop(); }
+                // TODO: custom decorators?
+                self.rollin()?;
+                self.output_line(&liso!(fg=red, bold, "E: ", -bold, text))?;
                 self.term.borrow_mut().reset_attrs()?;
             },
             #[cfg(feature="wrap")]
@@ -1210,13 +1221,21 @@ fn tty_worker(req_tx: std_mpsc::Sender<Request>,
         #[cfg(feature="completion")] consecutive_completion_presses: 0,
         #[cfg(feature="completion")] own_output: Output { tx: req_tx },
     };
-    'outer: while let Ok(request) = rx.recv() {
+    let mut dying = false;
+    'outer: while let Some(request) = if dying { rx.try_recv().ok() } else { rx.recv().ok() } {
         if let Request::Die = request { break }
         state.handle(&mut tx, &mut ded_tx, request)?;
         loop {
             use std_mpsc::TryRecvError;
             match rx.try_recv() {
-                Ok(Request::Die) => break 'outer,
+                Ok(Request::Die) => {
+                    dying = true;
+                    if cfg!(not(feature="capture-stderr")) {
+                        // if we're not capturing stderr, there's no reason not
+                        // to break immediately
+                        break
+                    }
+                },
                 Ok(request) => state.handle(&mut tx, &mut ded_tx, request)?,
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break 'outer,
@@ -1247,6 +1266,8 @@ pub(crate) fn worker(req_tx: std_mpsc::Sender<Request>,
         return pipe_worker(req_tx, rx, tx)
     }
     else {
+        #[cfg(feature="capture-stderr")]
+        stderr_capture::attempt_stderr_capture(Output { tx: req_tx.clone() });
         #[cfg(feature="history")]
         return tty_worker(req_tx, rx, tx, history);
         #[cfg(not(feature="history"))]
