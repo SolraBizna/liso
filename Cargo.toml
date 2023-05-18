@@ -23,7 +23,7 @@ textwrap = {version = "0.15", optional = true}
 unicode-width = "0.1.9"
 
 [target.'cfg(unix)'.dependencies]
-nix = {version = "0.25", default-features = false, features=["signal", "fs"]}
+libc = {version = "0.2.144"}
 
 [features]
 default = ["wrap", "history", "completion", "global"]
