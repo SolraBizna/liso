@@ -3,7 +3,7 @@ members = [".", "examples/fight"]
 
 [package]
 name = "liso"
-version = "1.1.0"
+version = "1.1.1"
 description = "Line Input with Simultaneous Output: input lines are editable, output lines are never scrambled, and all of it thread safe."
 authors = ["Solra Bizna <solra@bizna.name>"]
 edition = "2021"
@@ -29,7 +29,7 @@ libc = {version = "0.2.144"}
 default = ["wrap", "history", "completion", "global"]
 # Best-effort attempt to capture stderr and route it through liso. Not a
 # supported feature. Experimental.
-capture-stderr = ["libc", "errno"]
+capture-stderr = ["libc", "errno", "parking_lot"]
 # Tab-completion support.
 completion = []
 # Global `output()` function and `println!`/`wrapln!` macros. No plumbing

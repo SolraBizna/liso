@@ -79,6 +79,7 @@
 //! ```rust
 //! # let io = liso::InputOutput::new();
 //! # let some_path = "DefinitelyDoesNotExist";
+//! # #[cfg(feature="history")]
 //! io.swap_history(liso::History::from_file(some_path).unwrap());
 //! ```
 //! 
@@ -1015,6 +1016,7 @@ impl Output {
     /// Note: As usual with `Output` methods, you can pass a
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
+    #[cfg(feature="wrap")]
     pub fn wrapln<T>(&self, line: T)
     where T: Into<Line> {
         self.send(Request::OutputWrapped(line.into()))
@@ -1203,7 +1205,9 @@ impl InputOutput {
         let (request_tx, request_rx) = std_mpsc::channel();
         let (response_tx, response_rx) = tokio_mpsc::unbounded_channel();
         let request_tx_clone = request_tx.clone();
+        #[cfg(feature="history")]
         let history = Arc::new(RwLock::new(History::new()));
+        #[cfg(feature="history")]
         let history_clone = history.clone();
         std::thread::Builder::new().name("Liso output thread".to_owned())
             .spawn(move || {

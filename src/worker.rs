@@ -41,7 +41,12 @@ fn pipe_worker(req_tx: std_mpsc::Sender<Request>,
         }).unwrap();
     while let Ok(request) = rx.recv() {
         match request {
+            #[cfg(feature="wrap")]
             Request::Output(line) | Request::OutputWrapped(line) => {
+                std::println!("{}", line.text);
+            },
+            #[cfg(not(feature="wrap"))]
+            Request::Output(line) => {
                 std::println!("{}", line.text);
             },
             // stderr will not be captured if the pipe worker is being used.
@@ -79,6 +84,7 @@ struct TtyState {
     remembered_output: Option<RememberedOutput>,
     rollout_needed: bool,
     term: RefCell<Box<dyn Term>>,
+    #[cfg(feature="completion")]
     own_output: Output,
     #[cfg(feature="history")]
     history: Arc<RwLock<History>>,
@@ -789,7 +795,7 @@ impl TtyState {
         }
         Ok(())
     }
-    fn handle_return(&mut self, tx: &mut tokio_mpsc::UnboundedSender<Response>, ded_tx: &mut std_mpsc::SyncSender<Instant>)
+    fn handle_return(&mut self, tx: &mut tokio_mpsc::UnboundedSender<Response>, _ded_tx: &mut std_mpsc::SyncSender<Instant>)
     -> LifeOrDeath {
         self.rollout_needed = true;
         self.notice = None;
@@ -805,7 +811,7 @@ impl TtyState {
                 // TODO: make localizable
                 let e = format!("Unable to write history: {}", e);
                 drop(lock);
-                self.show_notice(liso!(inverse, e), Duration::from_secs(3), ded_tx)?;
+                self.show_notice(liso!(inverse, e), Duration::from_secs(3), _ded_tx)?;
             }
         }
         tx.send(Response::Input(input))?;
@@ -856,9 +862,9 @@ impl TtyState {
                 // Control-L (clear screen)
                 '\u{000C}' => self.handle_clear()?,
                 // Control-N (history next)
-                '\u{000E}' => self.history_next()?,
+                #[cfg(feature="history")] '\u{000E}' => self.history_next()?,
                 // Control-P (history previous)
-                '\u{0010}' => self.history_prev()?,
+                #[cfg(feature="history")] '\u{0010}' => self.history_prev()?,
                 // Control-T
                 '\u{0014}' => tx.send(Response::Info)?,
                 // Control-U (kill line before cursor)
@@ -930,9 +936,9 @@ impl TtyState {
                         // Control-L (clear screen)
                         KeyCode::Char('l') => self.handle_clear()?,
                         // Control-N (history next)
-                        KeyCode::Char('n') => self.history_next()?,
+                        #[cfg(feature="history")] KeyCode::Char('n') => self.history_next()?,
                         // Control-P (history previous)
-                        KeyCode::Char('p') => self.history_prev()?,
+                        #[cfg(feature="history")] KeyCode::Char('p') => self.history_prev()?,
                         // Control-T
                         KeyCode::Char('t') =>tx.send(Response::Info)?,
                         // Control-U (kill line before cursor)
@@ -985,8 +991,8 @@ impl TtyState {
                             => self.handle_delete_back()?,
                         KeyCode::Delete
                             => self.handle_delete_fore()?,
-                        KeyCode::Up => self.history_prev()?,
-                        KeyCode::Down => self.history_next()?,
+                        #[cfg(feature="history")] KeyCode::Up => self.history_prev()?,
+                        #[cfg(feature="history")] KeyCode::Down => self.history_next()?,
                         KeyCode::Left
                             => self.handle_left_arrow()?,
                         KeyCode::Right
@@ -1009,6 +1015,7 @@ impl TtyState {
         ded_tx.send(deadline)?;
         Ok(())
     }
+    #[cfg(feature="history")]
     fn history_prev(&mut self) -> LifeOrDeath {
         let history = self.history.read().unwrap();
         let prev_history_index = match self.cur_history_index {
@@ -1035,6 +1042,7 @@ impl TtyState {
         self.history_original_line = self.cur_history_index.map(|i| history.get_lines()[i].clone());
         Ok(())
     }
+    #[cfg(feature="history")]
     fn history_next(&mut self) -> LifeOrDeath {
         let history = self.history.read().unwrap();
         match self.cur_history_index {
