@@ -6,11 +6,11 @@
 //! synchronously (without).
 //!
 //! # Usage
-//! 
+//!
 //! Create an [`InputOutput`](struct.InputOutput.html) object with
 //! `InputOutput::new()`. Liso will automatically configure itself based on how
 //! your program is being used.
-//! 
+//!
 //! Your `InputOutput` instance can be used to send output or receive input.
 //! Call `clone_output` to create an [`OutputOnly`](struct.OutputOnly.html)
 //! instance, which can only be used to send output. You can call
@@ -18,7 +18,7 @@
 //! `OutputOnly`s directly. An unlimited number of threads or tasks can send
 //! output through Liso, but only one thread/task can receive user input:
 //! whichever one currently holds the `InputOutput` instance.
-//! 
+//!
 //! If the `global` feature is enabled, which it is by default, then you
 //! don't *have* to create `OutputOnly` instances and keep them around in order
 //! to send output. See [the "Global" section](#global) for more information.
@@ -30,19 +30,19 @@
 //! [`wrapln()`](struct.Output.html#method.wrapln), whichever you prefer. Any
 //! styling and color information is reset after the line is output, so you
 //! don't have to worry about dangling attributes.
-//! 
+//!
 //! Liso supports a prompt line, which is presented ahead of the user input.
 //! Use [`prompt()`](struct.Output.html#method.prompt) to set it. Styling and
 //! color information is *not* reset between the prompt and the current input
 //! text, so you can style/color the input text by having the desired
 //! styles/colors active at the end of the prompt line.
-//! 
+//!
 //! Liso supports an optional status line, which "hangs out" above the input
 //! text. Use [`status()`](struct.Output.html#method.status) to set it. Printed
 //! text appears above the status line, the prompt and any in-progress input
 //! appears below it. Use this to present contextual or frequently-changing
 //! information.
-//! 
+//!
 //! Liso supports "notices", temporary messages that appear in place of the
 //! prompt and input for a limited time. Use
 //! [`notice()`](struct.Output.html#method.notice) to display one. The notice
@@ -51,7 +51,7 @@
 //! should only use this in direct response to user input; in fact, the only
 //! legitimate use may be to complain about an unknown control character. (See
 //! [`Response`](enum.Response.html) for an example of this use.)
-//! 
+//!
 //! # Global
 //!
 //! If the `global` feature is enabled (which it is by default), you can call
@@ -71,31 +71,31 @@
 //! do it hundreds of thousands of times per second.
 //!
 //! # History
-//! 
+//!
 //! If the `history` feature is enabled (which it is by default), Liso supports
 //! a rudimentary command history. It provides a conservative default that
 //! isn't backed by any file. Try:
-//! 
+//!
 //! ```rust
 //! # let io = liso::InputOutput::new();
 //! # let some_path = "DefinitelyDoesNotExist";
 //! # #[cfg(feature="history")]
 //! io.swap_history(liso::History::from_file(some_path).unwrap());
 //! ```
-//! 
+//!
 //! to make it backed by a file, and see [`History`](struct.History.html) for
 //! more information.
-//! 
+//!
 //! # Completion
-//! 
+//!
 //! If the `completion` feature is enabled (which it is by default), Liso
 //! supports tab completion. Implement [`Completor`](trait.Completor.html),
 //! then use [`set_completor`](struct.Output.html#method.set_completor) to make
 //! your new completor active. See the linked documentation for more
 //! information.
-//! 
+//!
 //! # Pipe mode
-//! 
+//!
 //! If *either* stdin or stdout is not a tty, *or* the `TERM` environment
 //! variable is set to either `dumb` or `pipe`, Liso enters "pipe mode". In
 //! this mode, status lines, notices, and prompts are not outputted, style
@@ -103,7 +103,7 @@
 //! your program without any processing of control characters or escape
 //! sequences. This means that a program using Liso will behave nicely when
 //! used in a pipeline, or with a relatively unsophisticated terminal.
-//! 
+//!
 //! `TERM=dumb` is respected out of backwards compatibility with old UNIXes and
 //! real terminals that identify this way. `TERM=pipe` is present as an
 //! alternative for those who would rather not perpetuate an ableist slur, but
@@ -114,46 +114,43 @@
 use std::{
     any::Any,
     borrow::Cow,
-    time::{Duration, Instant},
     sync::mpsc as std_mpsc,
+    time::{Duration, Instant},
 };
 
-#[cfg(not(feature="global"))]
+#[cfg(not(feature = "global"))]
 use std::sync::atomic::{AtomicBool, Ordering};
 
-#[cfg(feature="history")]
-use std::{
-    sync::{Arc, RwLock, RwLockReadGuard},
-};
+#[cfg(feature = "history")]
+use std::sync::{Arc, RwLock, RwLockReadGuard};
 
-#[cfg(feature="completion")]
+#[cfg(feature = "completion")]
 use std::num::NonZeroU32;
 
 use bitflags::bitflags;
-use crossterm::style::{
-    Color as CtColor,
-    Attribute as CtAttribute,
-    Attributes as CtAttributes,
-};
 use crossterm::event::Event;
+use crossterm::style::{
+    Attribute as CtAttribute, Attributes as CtAttributes, Color as CtColor,
+};
 use tokio::sync::mpsc as tokio_mpsc;
 
-mod worker;
 mod term;
+mod worker;
 use term::*;
-#[cfg(unix)] mod unix_util;
+#[cfg(unix)]
+mod unix_util;
 
-#[cfg(feature="history")]
+#[cfg(feature = "history")]
 mod history;
-#[cfg(feature="history")]
+#[cfg(feature = "history")]
 pub use history::*;
 
-#[cfg(feature="completion")]
+#[cfg(feature = "completion")]
 mod completion;
-#[cfg(feature="completion")]
+#[cfg(feature = "completion")]
 pub use completion::*;
 
-#[cfg(feature="capture-stderr")]
+#[cfg(feature = "capture-stderr")]
 mod stderr_capture;
 
 /// When handling input ourselves, this is the amount of time to wait after
@@ -178,26 +175,36 @@ const ESCAPE_DELAY: Duration = Duration::new(0, 1000000000 / 24);
 /// need any of the error information, we can condense it all down into this,
 /// the "an error happened and we don't care what" type.
 struct DummyError {}
-type LifeOrDeath = std::result::Result<(),DummyError>;
+type LifeOrDeath = std::result::Result<(), DummyError>;
 impl From<std::io::Error> for DummyError {
-    fn from(_: std::io::Error) -> DummyError { DummyError {} }
+    fn from(_: std::io::Error) -> DummyError {
+        DummyError {}
+    }
 }
 impl<T> From<tokio_mpsc::error::SendError<T>> for DummyError {
-    fn from(_: tokio_mpsc::error::SendError<T>) -> DummyError { DummyError {} }
+    fn from(_: tokio_mpsc::error::SendError<T>) -> DummyError {
+        DummyError {}
+    }
 }
 impl<T> From<std_mpsc::SendError<T>> for DummyError {
-    fn from(_: std_mpsc::SendError<T>) -> DummyError { DummyError {} }
+    fn from(_: std_mpsc::SendError<T>) -> DummyError {
+        DummyError {}
+    }
 }
 impl From<std_mpsc::RecvError> for DummyError {
-    fn from(_: std_mpsc::RecvError) -> DummyError { DummyError {} }
+    fn from(_: std_mpsc::RecvError) -> DummyError {
+        DummyError {}
+    }
 }
 impl From<std_mpsc::RecvTimeoutError> for DummyError {
-    fn from(_: std_mpsc::RecvTimeoutError) -> DummyError { DummyError {} }
+    fn from(_: std_mpsc::RecvTimeoutError) -> DummyError {
+        DummyError {}
+    }
 }
 
 /// Colors we support outputting. For compatibility, we only support the 3-bit
 /// ANSI colors.
-/// 
+///
 /// Here's a short list of reasons not to use color as the only source of
 /// certain information:
 ///
@@ -211,9 +218,9 @@ impl From<std_mpsc::RecvTimeoutError> for DummyError {
 ///   affecting as much as 8% of the population, would make `Red`, `Yellow`,
 ///   and `Green` hard to distinguish from one another. Every other imaginable
 ///   variation also exists.
-/// 
+///
 /// And some guidelines to adhere to:
-/// 
+///
 /// - Never assume you know what color `None` is. It could be white, black, or
 ///   something entirely unexpected.
 /// - Never specify a foreground color of `White` or `Black` without also
@@ -223,26 +230,26 @@ impl From<std_mpsc::RecvTimeoutError> for DummyError {
 /// - Instead of setting white-on-black or black-on-white, consider using
 ///   [inverse video](struct.Style.html#associatedconstant.INVERSE) to achieve
 ///   your goal instead.
-#[derive(Clone,Copy,Debug,Eq,PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum Color {
     /// Absence of light. The color of space. (Some terminals will render this
     /// as a dark gray instead.)
-    Black=0,
+    Black = 0,
     /// The color of blood, danger, and rage.
-    Red=1,
+    Red = 1,
     /// The color of plants, safety, and circadian stasis.
-    Green=2,
+    Green = 2,
     /// The color of all the worst chemicals.
-    Yellow=3,
+    Yellow = 3,
     /// The color of a calm ocean.
-    Blue=4,
+    Blue = 4,
     /// The color of a clear sky.
-    Cyan=5,
+    Cyan = 5,
     /// A color that occurs rarely in nature, but often in screenshots of GEM.
-    Magenta=6,
+    Magenta = 6,
     /// A (roughly) equal mix of all wavelengths of light.
-    White=7,
+    White = 7,
 }
 
 impl Color {
@@ -307,7 +314,7 @@ bitflags! {
     /// it. On any standards-compliant terminal, unsupported features will be
     /// ignored. Even on standards-compliant terminals, these are very open to
     /// interpretation.
-    #[derive(Default)]
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub struct Style: u32 {
         /// No styling at all. (A nice alias for `Style::empty()`.)
         const PLAIN = 0;
@@ -333,16 +340,29 @@ bitflags! {
         /// latter might be confused for some kind of "mirrored video" feature.
         #[doc(alias="INVERSE")]
         const REVERSE = 1 << 3;
+        /// Prints in an italic font.
+        const ITALIC = 1 << 4;
     }
 }
 
 impl Style {
-    fn to_crossterm(&self) -> CtAttributes {
+    fn as_crossterm(&self) -> CtAttributes {
         let mut ret = CtAttributes::default();
-        if self.contains(Style::BOLD) { ret.set(CtAttribute::Bold) }
-        if self.contains(Style::DIM) { ret.set(CtAttribute::Dim) }
-        if self.contains(Style::UNDERLINE) { ret.set(CtAttribute::Underlined) }
-        if self.contains(Style::INVERSE) { ret.set(CtAttribute::Reverse) }
+        if self.contains(Style::BOLD) {
+            ret.set(CtAttribute::Bold)
+        }
+        if self.contains(Style::DIM) {
+            ret.set(CtAttribute::Dim)
+        }
+        if self.contains(Style::UNDERLINE) {
+            ret.set(CtAttribute::Underlined)
+        }
+        if self.contains(Style::INVERSE) {
+            ret.set(CtAttribute::Reverse)
+        }
+        if self.contains(Style::ITALIC) {
+            ret.set(CtAttribute::Italic)
+        }
         ret
     }
 }
@@ -368,7 +388,7 @@ pub struct OutputOnly(Output);
 pub struct InputOutput {
     output: Output,
     rx: tokio_mpsc::UnboundedReceiver<Response>,
-    #[cfg(feature="history")]
+    #[cfg(feature = "history")]
     history: Arc<RwLock<History>>,
     death_count: u32,
 }
@@ -388,7 +408,8 @@ struct LineElement {
     bg: Option<Color>,
     /// The start (inclusive) and end (exclusive) range of text within the
     /// parent `Line` to which these attributes apply.
-    start: usize, end: usize,
+    start: usize,
+    end: usize,
 }
 
 /// This is a line of text, with optional styling information, ready for
@@ -404,7 +425,10 @@ pub struct Line {
 impl Line {
     /// Creates a new, empty line.
     pub fn new() -> Line {
-        Line { text: String::new(), elements: Vec::new() }
+        Line {
+            text: String::new(),
+            elements: Vec::new(),
+        }
     }
     /// Creates a new line, containing the given, unstyled, text. Creates a new
     /// copy iff the passed `Cow` is borrowed or contains control characters.
@@ -415,6 +439,9 @@ impl Line {
     }
     /// Creates a new line, containing the given, unstyled, text. Always copies
     /// the passed string.
+    ///
+    /// Unlike the one from the `FromStr` trait, this function always succeeds.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(i: &str) -> Line {
         Line::from_cow(Cow::Borrowed(i))
     }
@@ -428,25 +455,29 @@ impl Line {
         &self.text
     }
     fn append_text(&mut self, i: Cow<str>) {
-        if i.len() == 0 { return }
-        if self.text.len() == 0 {
+        if i.len() == 0 {
+            return;
+        }
+        if self.text.is_empty() {
             // The line didn't have any text or elements yet.
             match self.elements.last_mut() {
                 None => {
                     self.elements.push(LineElement {
-                        style: Style::PLAIN, fg: None, bg: None,
-                        start: 0, end: i.len()
+                        style: Style::PLAIN,
+                        fg: None,
+                        bg: None,
+                        start: 0,
+                        end: i.len(),
                     });
-                },
+                }
                 Some(x) => {
                     assert_eq!(x.start, 0);
                     assert_eq!(x.end, 0);
                     x.end = i.len();
-                },
+                }
             }
             self.text = i.into_owned();
-        }
-        else {
+        } else {
             // The line did have some text.
             let start = self.text.len();
             let end = start + i.len();
@@ -469,37 +500,39 @@ impl Line {
     /// [3]: #method.append_line
     /// [4]: #method.as_str
     pub fn add_text<'a, T>(&mut self, i: T) -> &mut Line
-    where T: Into<Cow<'a, str>> {
+    where
+        T: Into<Cow<'a, str>>,
+    {
         let i: Cow<str> = i.into();
-        if i.len() == 0 { return self }
+        if i.len() == 0 {
+            return self;
+        }
         // we regard as a control character anything in the C0 and C1 control
         // character blocks, as well as the U+2028 LINE SEPARATOR and
         // U+2029 PARAGRAPH SEPARATOR characters. Except newliso!
-        let mut control_iterator = i.match_indices(|x: char|
-                                                   (x.is_control()
-                                                    && x != '\n')
-                                                   || x == '\u{2028}'
-                                                   || x == '\u{2029}');
+        let mut control_iterator = i.match_indices(|x: char| {
+            (x.is_control() && x != '\n') || x == '\u{2028}' || x == '\u{2029}'
+        });
         let first_control_pos = control_iterator.next();
         match first_control_pos {
             None => {
                 // No control characters to expand. Put it in directly.
                 self.append_text(i);
-            },
+            }
             Some(mut pos) => {
                 let mut plain_start = 0;
                 loop {
                     if pos.0 != plain_start {
-                        self.append_text(Cow::Borrowed(&i[plain_start..pos.0]));
+                        self.append_text(Cow::Borrowed(
+                            &i[plain_start..pos.0],
+                        ));
                     }
                     let control_char = pos.1.chars().next().unwrap();
                     self.toggle_style(Style::INVERSE);
                     let control_char = control_char as u32;
                     let addendum = if control_char < 32 {
-                        format!("^{}", (b'@'+(control_char as u8))
-                                        as char)
-                    }
-                    else {
+                        format!("^{}", (b'@' + (control_char as u8)) as char)
+                    } else {
                         format!("U+{:04X}", control_char)
                     };
                     self.append_text(Cow::Owned(addendum));
@@ -513,7 +546,7 @@ impl Line {
                 if plain_start != i.len() {
                     self.append_text(Cow::Borrowed(&i[plain_start..]));
                 }
-            },
+            }
         }
         self
     }
@@ -535,20 +568,28 @@ impl Line {
             None => {
                 // (fall through)
                 (None, None)
-            },
+            }
             Some(x) => {
                 // case 2: no change to attributes
-                if x.style == nu { return self }
+                if x.style == nu {
+                    return self;
+                }
                 // case 3: last element doesn't have text yet.
-                else if x.start == x.end { x.style = nu; return self }
+                else if x.start == x.end {
+                    x.style = nu;
+                    return self;
+                }
                 (x.fg, x.bg)
-            },
+            }
         };
         // (case 1 fall through, or...)
         // case 4: an element with text is here.
         self.elements.push(LineElement {
-            style: nu, fg, bg,
-            start: self.text.len(), end: self.text.len(),
+            style: nu,
+            fg,
+            bg,
+            start: self.text.len(),
+            end: self.text.len(),
         });
         self
     }
@@ -596,7 +637,9 @@ impl Line {
     /// [1]: enum.Color.html
     pub fn set_fg_color(&mut self, nu: Option<Color>) -> &mut Line {
         let (fg, bg) = self.get_colors();
-        if nu != fg { self.set_colors(nu, bg); }
+        if nu != fg {
+            self.set_colors(nu, bg);
+        }
         self
     }
     /// Sets the background [`Color`][1].
@@ -604,29 +647,44 @@ impl Line {
     /// [1]: enum.Color.html
     pub fn set_bg_color(&mut self, nu: Option<Color>) -> &mut Line {
         let (fg, bg) = self.get_colors();
-        if nu != bg { self.set_colors(fg, nu); }
+        if nu != bg {
+            self.set_colors(fg, nu);
+        }
         self
     }
     /// Sets both the foreground and background [`Color`][1].
     ///
     /// [1]: enum.Color.html
-    pub fn set_colors(&mut self, fg: Option<Color>, bg: Option<Color>) -> &mut Line {
+    pub fn set_colors(
+        &mut self,
+        fg: Option<Color>,
+        bg: Option<Color>,
+    ) -> &mut Line {
         let prev_style = match self.elements.last_mut() {
             // case 1: no elements yet, make one.
             None => Style::PLAIN,
             Some(x) => {
                 // case 2: no change to style
-                if x.fg == fg && x.bg == bg { return self }
+                if x.fg == fg && x.bg == bg {
+                    return self;
+                }
                 // case 3: last element doesn't have text yet.
-                else if x.start == x.end { x.fg = fg; x.bg = bg; return self }
+                else if x.start == x.end {
+                    x.fg = fg;
+                    x.bg = bg;
+                    return self;
+                }
                 x.style
-            },
+            }
         };
         // (case 1 fall through, or...)
         // case 3: an element with text is here.
         self.elements.push(LineElement {
-            style: prev_style, fg, bg,
-            start: self.text.len(), end: self.text.len(),
+            style: prev_style,
+            fg,
+            bg,
+            start: self.text.len(),
+            end: self.text.len(),
         });
         self
     }
@@ -653,9 +711,13 @@ impl Line {
     ///
     /// [1]: struct.Style.html
     /// [2]: enum.Color.html
-    pub fn is_empty(&self) -> bool { self.text.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
     /// Returns the number of **BYTES** of text this line contains.
-    pub fn len(&self) -> usize { self.text.len() }
+    pub fn len(&self) -> usize {
+        self.text.len()
+    }
     /// Iterate over chars of the line, including [`Style`][1] and [`Color`][2]
     /// information, one `char` at a time.
     ///
@@ -703,7 +765,7 @@ impl Line {
         for element in other.elements.iter() {
             self.set_style(element.style);
             self.set_colors(element.fg, element.bg);
-            self.add_text(&other.text[element.start .. element.end]);
+            self.add_text(&other.text[element.start..element.end]);
         }
     }
     /// Insert linebreaks as necessary to make it so that no line within this
@@ -715,19 +777,27 @@ impl Line {
     /// [`println`](struct.Output.html#method.println) method. That way, Liso
     /// will automatically wrap the line of text to the correct width for the
     /// user's terminal.
-    #[cfg(feature="wrap")]
+    #[cfg(feature = "wrap")]
     pub fn wrap_to_width(&mut self, width: usize) {
         assert!(width > 0);
-        let newline_positions: Vec<usize>
-        = self.text.chars().enumerate().filter_map(|(n,c)| {
-            if c == '\n' { Some(n) }
-            else { None }
-        }).chain(Some(self.text.len())).collect();
-        let start_iter = newline_positions.iter().rev()
-            .skip(1).map(|x| *x+1).chain(Some(0usize));
+        let newline_positions: Vec<usize> = self
+            .text
+            .chars()
+            .enumerate()
+            .filter_map(|(n, c)| if c == '\n' { Some(n) } else { None })
+            .chain(Some(self.text.len()))
+            .collect();
+        let start_iter = newline_positions
+            .iter()
+            .rev()
+            .skip(1)
+            .map(|x| *x + 1)
+            .chain(Some(0usize));
         let end_iter = newline_positions.iter().rev();
         for (start, &end) in start_iter.zip(end_iter) {
-            if start >= end { continue }
+            if start >= end {
+                continue;
+            }
             let wrap_vec = textwrap::wrap(&self.text[start..end], width);
             let mut edit_vec = Vec::with_capacity(wrap_vec.len());
             let mut cur_end = start;
@@ -737,12 +807,16 @@ impl Line {
                 // work.
                 let slice = match el {
                     Cow::Borrowed(x) => x,
-                    Cow::Owned(_)
-                    => panic!("We needed textwrap to do borrows only!"),
+                    Cow::Owned(_) => {
+                        panic!("We needed textwrap to do borrows only!")
+                    }
                 };
-                let (start, end) = convert_subset_slice_to_range(&self.text,slice);
+                let (start, end) =
+                    convert_subset_slice_to_range(&self.text, slice);
                 debug_assert!(start <= end);
-                if start == end { continue }
+                if start == end {
+                    continue;
+                }
                 assert!(start >= cur_end);
                 if start != 0 {
                     edit_vec.push(cur_end..start);
@@ -750,41 +824,44 @@ impl Line {
                 cur_end = end;
             }
             for range in edit_vec.into_iter().rev() {
-                if range.start > 0 && self.text.as_bytes()[range.start-1] == b'\n' { continue }
+                if range.start > 0
+                    && self.text.as_bytes()[range.start - 1] == b'\n'
+                {
+                    continue;
+                }
                 self.erase_and_insert_newline(range);
             }
         }
     }
     // Internal use only.
-    #[cfg(feature="wrap")]
+    #[cfg(feature = "wrap")]
     fn erase_and_insert_newline(&mut self, range: std::ops::Range<usize>) {
         let delta_bytes = 1 - (range.end as isize - range.start as isize);
         self.text.replace_range(range.clone(), "\n");
         let mut elements_len = self.elements.len();
         let mut i = self.elements.len();
         loop {
-            if i == 0 { break }
+            if i == 0 {
+                break;
+            }
             i -= 1;
             let element = &mut self.elements[i];
             if element.end >= range.end {
                 element.end = ((element.end as isize) + delta_bytes) as usize;
-            }
-            else if element.end > range.start {
+            } else if element.end > range.start {
                 element.end = range.start;
             }
             if element.start >= range.end {
-                element.start = ((element.start as isize) + delta_bytes) as usize;
-            }
-            else if element.start > range.start {
+                element.start =
+                    ((element.start as isize) + delta_bytes) as usize;
+            } else if element.start > range.start {
                 element.start = range.start;
             }
             if element.end <= element.start {
-                if i == elements_len-1 {
+                if i == elements_len - 1 {
                     // preserve the last element, even if empty
                     element.end = element.start;
-                }
-                else {
-                    drop(element);
+                } else {
                     self.elements.remove(i);
                     elements_len -= 1;
                     continue;
@@ -797,16 +874,28 @@ impl Line {
     }
 }
 
-impl Into<Line> for String {
-    fn into(self) -> Line { Line::from_string(self) }
+impl Default for Line {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-impl Into<Line> for &str {
-    fn into(self) -> Line { Line::from_str(self) }
+impl From<String> for Line {
+    fn from(val: String) -> Self {
+        Line::from_string(val)
+    }
 }
 
-impl Into<Line> for Cow<'_, str> {
-    fn into(self) -> Line { Line::from_cow(self) }
+impl From<&str> for Line {
+    fn from(val: &str) -> Self {
+        Line::from_str(val)
+    }
+}
+
+impl From<Cow<'_, str>> for Line {
+    fn from(val: Cow<'_, str>) -> Self {
+        Line::from_cow(val)
+    }
 }
 
 /// Something sent *to* the Liso thread.
@@ -814,7 +903,7 @@ enum Request {
     /// Sent by `println`
     Output(Line),
     /// Sent by `wrapln`
-    #[cfg(feature="wrap")]
+    #[cfg(feature = "wrap")]
     OutputWrapped(Line),
     /// Sent by `echoln`
     OutputEcho(Line),
@@ -852,13 +941,13 @@ enum Request {
     /// Sent by `send_custom`.
     Custom(Box<dyn Any + Send>),
     /// Sent when the `History` is changed.
-    #[cfg(feature="history")]
+    #[cfg(feature = "history")]
     BumpHistory,
     /// Sent when the `Completor` is to be replaced.
-    #[cfg(feature="completion")]
+    #[cfg(feature = "completion")]
     SetCompletor(Option<Box<dyn Completor>>),
     /// Sent when some captured stderr is received.
-    #[cfg(feature="capture-stderr")]
+    #[cfg(feature = "capture-stderr")]
     StderrLine(String),
 }
 
@@ -911,7 +1000,7 @@ enum Request {
 /// # }
 /// ```
 ///
-/// 
+///
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Response {
@@ -929,7 +1018,7 @@ pub enum Response {
     /// this once, you will never receive any other `Response` from Liso again.
     /// Your program should exit soon after, or at the very least should close
     /// down that `InputOutput` instance.
-    /// 
+    ///
     /// If your program receives `Response::Dead` on the same `InputOutput`
     /// instance too many times, Liso will panic. This is to ensure that even
     /// a poorly-written program that ignores `Response::Dead` will still exit
@@ -965,7 +1054,7 @@ pub enum Response {
     Custom(Box<dyn Any + Send>),
     /// Sent when the user presses an unknown control character with the given
     /// value (which will be between 0 and 31 inclusive).
-    /// 
+    ///
     /// Don't use particular values of `Unknown` for any specific purpose.
     /// Later versions of Liso may add additional `Response` variants for new
     /// control keys, or handle more control keys itself, replacing the
@@ -997,8 +1086,7 @@ impl Response {
 
 impl Output {
     fn send(&self, thing: Request) {
-        self.tx.send(thing)
-            .expect("Liso output has stopped");
+        self.tx.send(thing).expect("Liso output has stopped");
     }
     /// Prints a (possibly styled) line of regular output to the screen.
     ///
@@ -1006,7 +1094,9 @@ impl Output {
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn println<T>(&self, line: T)
-    where T: Into<Line> {
+    where
+        T: Into<Line>,
+    {
         self.send(Request::Output(line.into()))
     }
     /// Prints a (possibly styled) line of regular output to the screen,
@@ -1016,9 +1106,11 @@ impl Output {
     /// Note: As usual with `Output` methods, you can pass a
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
-    #[cfg(feature="wrap")]
+    #[cfg(feature = "wrap")]
     pub fn wrapln<T>(&self, line: T)
-    where T: Into<Line> {
+    where
+        T: Into<Line>,
+    {
         self.send(Request::OutputWrapped(line.into()))
     }
     /// Prints a (possibly styled) line of regular output to the screen, but
@@ -1030,7 +1122,9 @@ impl Output {
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn echoln<T>(&self, line: T)
-    where T: Into<Line> {
+    where
+        T: Into<Line>,
+    {
         self.send(Request::OutputEcho(line.into()))
     }
     /// Sets the status line to the given (possibly styled) text. This will be
@@ -1045,7 +1139,9 @@ impl Output {
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
     pub fn status<T>(&self, line: Option<T>)
-    where T: Into<Line> {
+    where
+        T: Into<Line>,
+    {
         self.send(Request::Status(line.map(T::into)))
     }
     /// Displays a (possibly styled) notice that temporarily replaces the
@@ -1063,7 +1159,9 @@ impl Output {
     ///
     /// [1]: enum.Response.html
     pub fn notice<T>(&self, line: T, max_duration: Duration)
-    where T: Into<Line> {
+    where
+        T: Into<Line>,
+    {
         self.send(Request::Notice(line.into(), max_duration))
     }
     /// Sets the prompt to the given (possibly styled) text. The prompt is
@@ -1089,22 +1187,30 @@ impl Output {
     /// Note: As usual with `Output` methods, you can pass a
     /// [`Line`](struct.Line.html), a plain `String`/`&str`, or a `Cow<str>`
     /// here. See also the [`liso!`](macro.liso.html) macro.
-    pub fn prompt<T>(&self, line: T,
-                     input_allowed: bool, clear_input: bool)
-    where T: Into<Line> {
+    pub fn prompt<T>(&self, line: T, input_allowed: bool, clear_input: bool)
+    where
+        T: Into<Line>,
+    {
         let line: Line = line.into();
         self.send(Request::Prompt {
-            line: if line.elements.len() == 0 { None } else { Some(line) },
-            input_allowed, clear_input
+            line: if line.elements.is_empty() {
+                None
+            } else {
+                Some(line)
+            },
+            input_allowed,
+            clear_input,
         })
     }
     /// Removes the prompt. The boolean parameters have the same meaning as for
     /// `prompt`.
-    #[deprecated="Use `prompt` with a blank line instead."]
+    #[deprecated = "Use `prompt` with a blank line instead."]
     #[doc(hidden)]
     pub fn remove_prompt(&self, input_allowed: bool, clear_input: bool) {
         self.send(Request::Prompt {
-            line: None, input_allowed, clear_input
+            line: None,
+            input_allowed,
+            clear_input,
         })
     }
     /// Get the user's attention with an audible or visible bell.
@@ -1145,9 +1251,11 @@ impl Output {
     /// must call this method instead, as this makes it clear that you are not
     /// trying to clone the `Input` half of that `InputOutput`.
     pub fn clone_output(&self) -> OutputOnly {
-        OutputOnly(Output { tx: self.tx.clone() })
+        OutputOnly(Output {
+            tx: self.tx.clone(),
+        })
     }
-    #[deprecated="Use `clone_output` instead."]
+    #[deprecated = "Use `clone_output` instead."]
     #[doc(hidden)]
     pub fn clone_sender(&self) -> OutputOnly {
         self.clone_output()
@@ -1163,7 +1271,7 @@ impl Output {
         self.send(Request::Custom(value))
     }
     /// Provide a new `Completor` for doing tab completion.
-    #[cfg(feature="completion")]
+    #[cfg(feature = "completion")]
     pub fn set_completor(&self, completor: Option<Box<dyn Completor>>) {
         self.send(Request::SetCompletor(completor))
     }
@@ -1171,61 +1279,82 @@ impl Output {
 
 impl Drop for InputOutput {
     fn drop(&mut self) {
-        #[cfg(feature="global")]
-        { *LISO_OUTPUT_TX.lock() = None; }
+        #[cfg(feature = "global")]
+        {
+            *LISO_OUTPUT_TX.lock() = None;
+        }
         self.actually_blocking_die();
-        #[cfg(not(feature="global"))]
+        #[cfg(not(feature = "global"))]
         LISO_IS_ACTIVE.store(false, Ordering::Release);
-        #[cfg(feature="capture-stderr")]
+        #[cfg(feature = "capture-stderr")]
         stderr_capture::wait_until_not_captured();
     }
 }
 
 impl core::ops::Deref for InputOutput {
     type Target = Output;
-    fn deref(&self) -> &Output { &self.output }
+    fn deref(&self) -> &Output {
+        &self.output
+    }
 }
 
 impl InputOutput {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> InputOutput {
         let we_are_alone;
-        #[cfg(feature="global")]
+        #[cfg(feature = "global")]
         let mut global_lock = LISO_OUTPUT_TX.lock();
-        #[cfg(feature="global")]
-        { we_are_alone = global_lock.is_none(); }
-        #[cfg(not(feature="global"))]
-        match LISO_IS_ACTIVE.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed) {
+        #[cfg(feature = "global")]
+        {
+            we_are_alone = global_lock.is_none();
+        }
+        #[cfg(not(feature = "global"))]
+        match LISO_IS_ACTIVE.compare_exchange(
+            false,
+            true,
+            Ordering::Acquire,
+            Ordering::Relaxed,
+        ) {
             Ok(_) => we_are_alone = true,
             Err(_) => we_are_alone = false,
         }
         if !we_are_alone {
-            panic!("Tried to have multiple `liso::InputOutput` instances \
-                        active at the same time!")
+            panic!(
+                "Tried to have multiple `liso::InputOutput` instances \
+                        active at the same time!"
+            )
         }
         let (request_tx, request_rx) = std_mpsc::channel();
         let (response_tx, response_rx) = tokio_mpsc::unbounded_channel();
         let request_tx_clone = request_tx.clone();
-        #[cfg(feature="history")]
+        #[cfg(feature = "history")]
         let history = Arc::new(RwLock::new(History::new()));
-        #[cfg(feature="history")]
+        #[cfg(feature = "history")]
         let history_clone = history.clone();
-        std::thread::Builder::new().name("Liso output thread".to_owned())
+        std::thread::Builder::new()
+            .name("Liso output thread".to_owned())
             .spawn(move || {
-                #[cfg(feature="history")] 
-                let _ =
-                    worker::worker(request_tx_clone, request_rx, response_tx, history_clone);
-                #[cfg(not(feature="history"))] 
+                #[cfg(feature = "history")]
+                let _ = worker::worker(
+                    request_tx_clone,
+                    request_rx,
+                    response_tx,
+                    history_clone,
+                );
+                #[cfg(not(feature = "history"))]
                 let _ =
                     worker::worker(request_tx_clone, request_rx, response_tx);
             })
             .unwrap();
-        #[cfg(feature="global")]
-        { *global_lock = Some(request_tx.clone()); }
+        #[cfg(feature = "global")]
+        {
+            *global_lock = Some(request_tx.clone());
+        }
         InputOutput {
             output: Output { tx: request_tx },
             rx: response_rx,
             death_count: 0,
-            #[cfg(feature="history")]
+            #[cfg(feature = "history")]
             history,
         }
     }
@@ -1240,19 +1369,18 @@ impl InputOutput {
     pub async fn die(mut self) {
         if self.output.tx.send(Request::Die).is_err() {
             // already dead!
-            return
+            return;
         }
         loop {
-            match self.read_async().await {
-                Response::Dead => break,
-                _ => (),
+            if let Response::Dead = self.read_async().await {
+                break;
             }
         }
     }
     fn actually_blocking_die(&mut self) {
         if self.output.tx.send(Request::Die).is_err() {
             // already dead!
-            return
+            return;
         }
         loop {
             match self.try_read() {
@@ -1289,11 +1417,14 @@ impl InputOutput {
     /// `Response::Dead` correctly.
     pub async fn read_async(&mut self) -> Response {
         match self.rx.recv().await {
-            None => { self.report_death(); Response::Dead },
+            None => {
+                self.report_death();
+                Response::Dead
+            }
             Some(x) => x,
         }
     }
-    #[deprecated="Use `read_async` instead."]
+    #[deprecated = "Use `read_async` instead."]
     #[doc(hidden)]
     pub async fn read(&mut self) -> Response {
         self.read_async().await
@@ -1308,11 +1439,19 @@ impl InputOutput {
     /// program is ignoring it and panic! Avoid this problem by handling
     /// `Response::Dead` correctly.
     pub fn read_timeout(&mut self, timeout: Duration) -> Option<Response> {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().expect("Couldn't create temporary Tokio runtime for `read_timeout`");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .expect(
+                "Couldn't create temporary Tokio runtime for `read_timeout`",
+            );
         rt.block_on(async {
             let timeout = tokio::time::timeout(timeout, self.rx.recv());
             match timeout.await {
-                Ok(None) => { self.report_death(); Some(Response::Dead) },
+                Ok(None) => {
+                    self.report_death();
+                    Some(Response::Dead)
+                }
                 Ok(Some(x)) => Some(x),
                 Err(_) => None,
             }
@@ -1328,11 +1467,22 @@ impl InputOutput {
     /// program is ignoring it and panic! Avoid this problem by handling
     /// `Response::Dead` correctly.
     pub fn read_deadline(&mut self, deadline: Instant) -> Option<Response> {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().expect("Couldn't create temporary Tokio runtime for `read_deadline`");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .expect(
+                "Couldn't create temporary Tokio runtime for `read_deadline`",
+            );
         rt.block_on(async {
-            let timeout = tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), self.rx.recv());
+            let timeout = tokio::time::timeout_at(
+                tokio::time::Instant::from_std(deadline),
+                self.rx.recv(),
+            );
             match timeout.await {
-                Ok(None) => { self.report_death(); Some(Response::Dead) },
+                Ok(None) => {
+                    self.report_death();
+                    Some(Response::Dead)
+                }
                 Ok(Some(x)) => Some(x),
                 Err(_) => None,
             }
@@ -1349,11 +1499,14 @@ impl InputOutput {
     /// `Response::Dead` correctly.
     pub fn read_blocking(&mut self) -> Response {
         match self.rx.blocking_recv() {
-            None => { self.report_death(); Response::Dead },
+            None => {
+                self.report_death();
+                Response::Dead
+            }
             Some(x) => x,
         }
     }
-    #[deprecated="Use `read_blocking` instead."]
+    #[deprecated = "Use `read_blocking` instead."]
     #[doc(hidden)]
     pub fn blocking_read(&mut self) -> Response {
         self.read_blocking()
@@ -1369,13 +1522,16 @@ impl InputOutput {
         use tokio::sync::mpsc::error::TryRecvError;
         match self.rx.try_recv() {
             Ok(x) => Some(x),
-            Err(TryRecvError::Disconnected) => { self.report_death(); Some(Response::Dead) },
+            Err(TryRecvError::Disconnected) => {
+                self.report_death();
+                Some(Response::Dead)
+            }
             Err(TryRecvError::Empty) => None,
         }
     }
     /// Provide a new `History` for Liso to use. Returns the old `History`
     /// instance.
-    #[cfg(feature="history")]
+    #[cfg(feature = "history")]
     pub fn swap_history(&self, mut history: History) -> History {
         let mut lock = self.history.write().unwrap();
         std::mem::swap(&mut history, &mut *lock);
@@ -1385,7 +1541,7 @@ impl InputOutput {
     }
     /// Lock the `History` for reading and return a reference to it. Make it
     /// brief!
-    #[cfg(feature="history")]
+    #[cfg(feature = "history")]
     pub fn read_history(&self) -> RwLockReadGuard<History> {
         self.history.read().unwrap()
     }
@@ -1410,7 +1566,7 @@ pub struct LineCharIterator<'a> {
 ///
 /// [1]: struct.Style.html
 /// [2]: enum.Color.html
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct LineChar {
     /// Byte index within the `Line` of the first byte of this `char`.
     pub index: usize,
@@ -1435,7 +1591,9 @@ pub struct LineChar {
 
 impl PartialEq for LineChar {
     fn eq(&self, other: &LineChar) -> bool {
-        self.ch == other.ch && self.style == other.style && self.fg == other.fg
+        self.ch == other.ch
+            && self.style == other.style
+            && self.fg == other.fg
             && self.bg == other.bg
     }
 }
@@ -1458,20 +1616,26 @@ impl LineChar {
     pub fn endfills_same_as(&self, other: &LineChar) -> bool {
         let a_underline = self.style.contains(Style::UNDERLINE);
         let b_underline = other.style.contains(Style::UNDERLINE);
-        if a_underline != b_underline { return false }
+        if a_underline != b_underline {
+            return false;
+        }
         debug_assert_eq!(a_underline, b_underline);
         let a_inverse = self.style.contains(Style::INVERSE);
         let b_inverse = other.style.contains(Style::INVERSE);
-        if a_inverse != b_inverse { false }
-        else if a_inverse {
+        if a_inverse != b_inverse {
+            false
+        } else if a_inverse {
             debug_assert!(b_inverse);
-            if a_underline && self.bg != other.bg { return false }
+            if a_underline && self.bg != other.bg {
+                return false;
+            }
             self.fg == other.fg
-        }
-        else {
+        } else {
             debug_assert!(!a_inverse);
             debug_assert!(!b_inverse);
-            if a_underline && self.fg != other.fg { return false }
+            if a_underline && self.fg != other.fg {
+                return false;
+            }
             self.bg == other.bg
         }
     }
@@ -1495,7 +1659,8 @@ impl Iterator for LineCharIterator<'_> {
             None => return None,
         };
         while self.cur_element < self.line.elements.len()
-        && self.line.elements[self.cur_element].end <= index {
+            && self.line.elements[self.cur_element].end <= index
+        {
             self.cur_element += 1;
         }
         // We should never end up with text in the text string that is not
@@ -1503,7 +1668,8 @@ impl Iterator for LineCharIterator<'_> {
         debug_assert!(self.cur_element < self.line.elements.len());
         let element = &self.line.elements[self.cur_element];
         Some(LineChar {
-            index, ch,
+            index,
+            ch,
             style: element.style,
             fg: element.fg,
             bg: element.bg,
@@ -1513,16 +1679,22 @@ impl Iterator for LineCharIterator<'_> {
 
 impl core::ops::Deref for OutputOnly {
     type Target = Output;
-    fn deref(&self) -> &Output { &self.0 }
+    fn deref(&self) -> &Output {
+        &self.0
+    }
 }
 
 impl Clone for OutputOnly {
-    fn clone(&self) -> OutputOnly { self.clone_output() }
+    fn clone(&self) -> OutputOnly {
+        self.clone_output()
+    }
 }
 
-#[cfg(feature="wrap")]
+#[cfg(feature = "wrap")]
 fn convert_subset_slice_to_range(outer: &str, inner: &str) -> (usize, usize) {
-    if inner.len() == 0 { return (0, 0) }
+    if inner.is_empty() {
+        return (0, 0);
+    }
     let outer_start = outer.as_ptr() as usize;
     let outer_end = outer_start.checked_add(outer.len()).unwrap();
     let inner_start = inner.as_ptr() as usize;
@@ -1538,25 +1710,63 @@ fn convert_subset_slice_to_range(outer: &str, inner: &str) -> (usize, usize) {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! color {
-    (Black) => (Some($crate::Color::Black));
-    (Red) => (Some($crate::Color::Red));
-    (Green) => (Some($crate::Color::Green));
-    (Yellow) => (Some($crate::Color::Yellow));
-    (Blue) => (Some($crate::Color::Blue));
-    (Cyan) => (Some($crate::Color::Cyan));
-    (Magenta) => (Some($crate::Color::Magenta));
-    (White) => (Some($crate::Color::White));
-    (none) => (None);
-    (black) => (Some($crate::Color::Black));
-    (red) => (Some($crate::Color::Red));
-    (green) => (Some($crate::Color::Green));
-    (yellow) => (Some($crate::Color::Yellow));
-    (blue) => (Some($crate::Color::Blue));
-    (cyan) => (Some($crate::Color::Cyan));
-    (magenta) => (Some($crate::Color::Magenta));
-    (white) => (Some($crate::Color::White));
-    (none) => (None);
-    ($other:expr) => ($other);
+    (Black) => {
+        Some($crate::Color::Black)
+    };
+    (Red) => {
+        Some($crate::Color::Red)
+    };
+    (Green) => {
+        Some($crate::Color::Green)
+    };
+    (Yellow) => {
+        Some($crate::Color::Yellow)
+    };
+    (Blue) => {
+        Some($crate::Color::Blue)
+    };
+    (Cyan) => {
+        Some($crate::Color::Cyan)
+    };
+    (Magenta) => {
+        Some($crate::Color::Magenta)
+    };
+    (White) => {
+        Some($crate::Color::White)
+    };
+    (none) => {
+        None
+    };
+    (black) => {
+        Some($crate::Color::Black)
+    };
+    (red) => {
+        Some($crate::Color::Red)
+    };
+    (green) => {
+        Some($crate::Color::Green)
+    };
+    (yellow) => {
+        Some($crate::Color::Yellow)
+    };
+    (blue) => {
+        Some($crate::Color::Blue)
+    };
+    (cyan) => {
+        Some($crate::Color::Cyan)
+    };
+    (magenta) => {
+        Some($crate::Color::Magenta)
+    };
+    (white) => {
+        Some($crate::Color::White)
+    };
+    (none) => {
+        None
+    };
+    ($other:expr) => {
+        $other
+    };
 }
 
 /// Add some pieces to a [`Line`](struct.Line.html). More convenient than
@@ -1624,7 +1834,7 @@ macro_rules! liso_add {
         $crate::liso_add!($line, $($rest)*);
     };
     // SET styles
-    // `bold` | `dim` | `underline` | `inverse`
+    // `bold` | `dim` | `underline` | `inverse` | `reverse` | `italic`
     ($line:ident, bold $($rest:tt)*) => {
         $line.set_style($crate::Style::BOLD);
         $crate::liso_add!($line, $($rest)*);
@@ -1645,8 +1855,12 @@ macro_rules! liso_add {
         $line.set_style($crate::Style::INVERSE);
         $crate::liso_add!($line, $($rest)*);
     };
+    ($line:ident, italic $($rest:tt)*) => {
+        $line.set_style($crate::Style::ITALIC);
+        $crate::liso_add!($line, $($rest)*);
+    };
     // ADD styles
-    // `+` (`bold` | `dim` | `underline` | `inverse`)
+    // `+` (`bold` | `dim` | `underline` | `inverse` | `reverse` | `italic`)
     ($line:ident, +bold $($rest:tt)*) => {
         $line.activate_style($crate::Style::BOLD);
         $crate::liso_add!($line, $($rest)*);
@@ -1667,8 +1881,12 @@ macro_rules! liso_add {
         $line.activate_style($crate::Style::INVERSE);
         $crate::liso_add!($line, $($rest)*);
     };
+    ($line:ident, +italic $($rest:tt)*) => {
+        $line.activate_style($crate::Style::ITALIC);
+        $crate::liso_add!($line, $($rest)*);
+    };
     // REMOVE styles
-    // `-` (`bold` | `dim` | `underline` | `inverse`)
+    // `-` (`bold` | `dim` | `underline` | `inverse` | `reverse` | `italic`)
     ($line:ident, -bold $($rest:tt)*) => {
         $line.deactivate_style($crate::Style::BOLD);
         $crate::liso_add!($line, $($rest)*);
@@ -1689,8 +1907,12 @@ macro_rules! liso_add {
         $line.deactivate_style($crate::Style::INVERSE);
         $crate::liso_add!($line, $($rest)*);
     };
+    ($line:ident, -italic $($rest:tt)*) => {
+        $line.deactivate_style($crate::Style::ITALIC);
+        $crate::liso_add!($line, $($rest)*);
+    };
     // TOGGLE styles
-    // `^` (`bold` | `dim` | `underline` | `inverse`)
+    // `^` (`bold` | `dim` | `underline` | `inverse` | `reverse` | `italic`)
     ($line:ident, ^bold $($rest:tt)*) => {
         $line.toggle_style($crate::Style::BOLD);
         $crate::liso_add!($line, $($rest)*);
@@ -1709,6 +1931,10 @@ macro_rules! liso_add {
     };
     ($line:ident, ^reverse $($rest:tt)*) => {
         $line.toggle_style($crate::Style::INVERSE);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, ^italic $($rest:tt)*) => {
+        $line.toggle_style($crate::Style::ITALIC);
         $crate::liso_add!($line, $($rest)*);
     };
     // Anything else: text to output.
@@ -1783,17 +2009,90 @@ macro_rules! liso {
     };
 }
 
+#[deprecated = "This type was renamed to `InputOutput` to improve clarity.\n\
+              To continue using this name without warnings, try `use \
+              liso::InputOutput as IO;`"]
+#[doc(hidden)]
+pub type IO = InputOutput;
+#[deprecated = "This type was split into `Output` and `OutputOnly` to improve \
+              clarity.\nReplace with `&Output` or `OutputOnly` as needed."]
+#[doc(hidden)]
+pub type Sender = OutputOnly;
+
+#[cfg(not(feature = "global"))]
+/// Used to prevent multiple Liso instances from being active at once.
+static LISO_IS_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+#[cfg(feature = "global")]
+static LISO_OUTPUT_TX: parking_lot::Mutex<Option<std_mpsc::Sender<Request>>> =
+    parking_lot::Mutex::new(None);
+
+/// If the `global` feature is enabled (which it is by default), and there is
+/// an [`InputOutput`](struct.InputOutput.html) alive somewhere, you can call
+/// `output()` to get an [`OutputOnly`](struct.OutputOnly.html) struct that you
+/// can use to perform output on it. This is less efficient than creating an
+/// `OutputOnly` directly with `clone_output()` and keeping it around, but it
+/// is more convenient.
+///
+/// Calling `output()` when there is no
+/// `InputOutput` alive will result in a panic.
+#[cfg(feature = "global")]
+pub fn output() -> OutputOnly {
+    match &*LISO_OUTPUT_TX.lock() {
+        None => {
+            panic!("liso::output() called with no liso::InputOutput alive")
+        }
+        Some(x) => OutputOnly(Output { tx: x.clone() }),
+    }
+}
+
+/// If the `global` feature is enabled (which it is by default), you can use
+/// `println!(...)` as convenient shorthand for `output().println(liso!(...))`.
+/// This is less efficient than creating an `OutputOnly` with `clone_output()`
+/// and keeping it around, but it is more convenient. You will have to
+/// explicitly `use liso::println;`, or call it by its full path
+/// (`liso::println!`) or Rust may be uncertain whether you meant to use this
+/// or `std::println!`. **Panics if there is no `InputOutput` instance alive.**
+///
+/// Syntax is the same as the [`liso!`](macro.liso.html) macro.
+#[cfg(feature = "global")]
+#[macro_export]
+macro_rules! println {
+    ($($rest:tt)*) => {
+        $crate::output().println(liso!($($rest)*))
+    }
+}
+
+/// If the `global` and `wrap` features are enabled (which they are by
+/// default), you can use `wrapln!(...)` as convenient shorthand for
+/// `output().println(liso!(...))`. This is less efficient than creating an
+/// `OutputOnly` with `clone_output()` and keeping it around, but it is more
+/// convenient. **Panics if there is no `InputOutput` instance alive.**
+///
+/// Syntax is the same as the [`liso!`](macro.liso.html) macro.
+#[cfg(all(feature = "global", feature = "wrap"))]
+#[macro_export]
+macro_rules! wrapln {
+    ($($rest:tt)*) => {
+        $crate::output().wrapln(liso!($($rest)*))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn control_char_splatting() {
         let mut line = Line::new();
-        line.add_text("Escape: \u{001B} Some C1 code: \u{008C} \
-                       Paragraph separator: \u{2029}");
-        assert_eq!(line.text,
-                   "Escape: ^[ Some C1 code: U+008C \
-                    Paragraph separator: U+2029");
+        line.add_text(
+            "Escape: \u{001B} Some C1 code: \u{008C} \
+                       Paragraph separator: \u{2029}",
+        );
+        assert_eq!(
+            line.text,
+            "Escape: ^[ Some C1 code: U+008C \
+                    Paragraph separator: U+2029"
+        );
         assert_eq!(line.elements.len(), 7);
         assert_eq!(line.elements[0].style, Style::PLAIN);
         assert_eq!(line.elements[1].style, Style::INVERSE);
@@ -1826,34 +2125,34 @@ mod tests {
         ];
         assert_eq!(line, alt_line);
     }
-    #[test] #[cfg(feature="wrap")]
+    #[test]
+    #[cfg(feature = "wrap")]
     fn line_wrap() {
-        let mut line = liso![
-            "This is a simple line wrapping test."
-        ];
+        let mut line = liso!["This is a simple line wrapping test."];
         line.wrap_to_width(20);
-        assert_eq!(line,
-                   liso!["This is a simple\nline wrapping test."]);
+        assert_eq!(line, liso!["This is a simple\nline wrapping test."]);
     }
-    #[test] #[cfg(feature="wrap")]
+    #[test]
+    #[cfg(feature = "wrap")]
     fn line_wrap_splat() {
-        for n in 1 .. 200 {
-            let mut line = liso![
-                "This is ", bold, "a test", plain, " of line wrapping?"
-            ];
+        for n in 1..200 {
+            let mut line =
+                liso!["This is ", bold, "a test", plain, " of line wrapping?"];
             line.wrap_to_width(n);
         }
     }
-    #[test] #[cfg(feature="wrap")]
+    #[test]
+    #[cfg(feature = "wrap")]
     fn lange_wrap() {
-        let mut line = liso![
-            "This is a simple line wrapping test.\n\nIt has two newlines in it."
-        ];
+        let mut line = liso!["This is a simple line wrapping test.\n\nIt has two newlines in it."];
         line.wrap_to_width(20);
-        assert_eq!(line,
-                   liso!["This is a simple\nline wrapping test.\n\nIt has two newlines\nin it."]);
+        assert_eq!(
+            line,
+            liso!["This is a simple\nline wrapping test.\n\nIt has two newlines\nin it."]
+        );
     }
-    #[test] #[cfg(feature="wrap")]
+    #[test]
+    #[cfg(feature = "wrap")]
     fn sehr_lagne_wrap() {
         const UNWRAPPED: &str = r#"Mike House was Gegory Houses' borther. He was a world renounced doctor from England, London. His arm was cut off in a fetal MIR incident so he had to walk around with a segway. When he leaned forward, the segway would go real fast. One day, Mike House had a new case for his crack team of other doctors that were pretty good, but not as good as Mike House. So Mike House told them, "WE HAVE A NEW CASE!" And the team said, "ALRIGHT!" And then Mike House said, "IF WE DO NOT SAVE HIM, HE WILL DIE!""#;
         const WRAPPED: &str = r#"Mike House was
@@ -1888,78 +2187,13 @@ HE WILL DIE!""#;
         assert_eq!(line.text, WRAPPED);
         assert_eq!(line.elements.last().unwrap().end, line.text.len());
     }
-    #[test] #[cfg(feature="wrap")]
+    #[test]
+    #[cfg(feature = "wrap")]
     fn non_synthetic_wrap() {
         let src_line = liso!(bold, fg=yellow, "WARNING: ", reset, "\"/home/sbizna/././././././././nobackup/eph/deleteme/d\" and \"/home/sbizna/././././././././nobackup/eph/deleteme/b\" were identical, but will have differing permissions!");
         let dst_line = liso!(bold, fg=yellow, "WARNING: ", reset, "\"/home/sbizna/././././././././nobackup/eph/deleteme/d\" and \"/home/\nsbizna/././././././././nobackup/eph/deleteme/b\" were identical, but will have\ndiffering permissions!");
         let mut line = src_line.clone();
         line.wrap_to_width(80);
         assert_eq!(line, dst_line);
-    }
-}
-
-#[deprecated="This type was renamed to `InputOutput` to improve clarity.\n\
-              To continue using this name without warnings, try `use \
-              liso::InputOutput as IO;`"]
-#[doc(hidden)]
-pub type IO = InputOutput;
-#[deprecated="This type was split into `Output` and `OutputOnly` to improve \
-              clarity.\nReplace with `&Output` or `OutputOnly` as needed."]
-#[doc(hidden)]
-pub type Sender = OutputOnly;
-
-#[cfg(not(feature="global"))]
-/// Used to prevent multiple Liso instances from being active at once.
-static LISO_IS_ACTIVE: AtomicBool = AtomicBool::new(false);
-
-#[cfg(feature="global")]
-static LISO_OUTPUT_TX: parking_lot::Mutex<Option<std_mpsc::Sender<Request>>> = parking_lot::Mutex::new(None);
-
-/// If the `global` feature is enabled (which it is by default), and there is
-/// an [`InputOutput`](struct.InputOutput.html) alive somewhere, you can call
-/// `output()` to get an [`OutputOnly`](struct.OutputOnly.html) struct that you
-/// can use to perform output on it. This is less efficient than creating an
-/// `OutputOnly` directly with `clone_output()` and keeping it around, but it
-/// is more convenient.
-///
-/// Calling `output()` when there is no
-/// `InputOutput` alive will result in a panic.
-#[cfg(feature="global")]
-pub fn output() -> OutputOnly {
-    match &*LISO_OUTPUT_TX.lock() {
-        None => panic!("liso::output() called with no liso::InputOutput alive"),
-        Some(x) => OutputOnly(Output { tx: x.clone() }),
-    }
-}
-
-/// If the `global` feature is enabled (which it is by default), you can use
-/// `println!(...)` as convenient shorthand for `output().println(liso!(...))`.
-/// This is less efficient than creating an `OutputOnly` with `clone_output()`
-/// and keeping it around, but it is more convenient. You will have to
-/// explicitly `use liso::println;`, or call it by its full path
-/// (`liso::println!`) or Rust may be uncertain whether you meant to use this
-/// or `std::println!`. **Panics if there is no `InputOutput` instance alive.**
-///
-/// Syntax is the same as the [`liso!`](macro.liso.html) macro.
-#[cfg(feature="global")]
-#[macro_export]
-macro_rules! println {
-    ($($rest:tt)*) => {
-        $crate::output().println(liso!($($rest)*))
-    }
-}
-
-/// If the `global` and `wrap` features are enabled (which they are by
-/// default), you can use `wrapln!(...)` as convenient shorthand for
-/// `output().println(liso!(...))`. This is less efficient than creating an
-/// `OutputOnly` with `clone_output()` and keeping it around, but it is more
-/// convenient. **Panics if there is no `InputOutput` instance alive.**
-///
-/// Syntax is the same as the [`liso!`](macro.liso.html) macro.
-#[cfg(all(feature="global", feature="wrap"))]
-#[macro_export]
-macro_rules! wrapln {
-    ($($rest:tt)*) => {
-        $crate::output().wrapln(liso!($($rest)*))
     }
 }

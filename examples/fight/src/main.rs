@@ -1,6 +1,4 @@
-use std::{
-    time::Duration,
-};
+use std::time::Duration;
 
 use liso::*;
 
@@ -23,8 +21,10 @@ impl Fight {
         let io = InputOutput::new();
         io.set_completor(Some(Box::new(FightCompletor)));
         io.wrapln(liso!(bold, "Welcome to Fight!"));
-        io.wrapln("Your goal in life is to defeat this evil monster, before \
-                      they can defeat you!");
+        io.wrapln(
+            "Your goal in life is to defeat this evil monster, before \
+                      they can defeat you!",
+        );
         let mut fight = Fight {
             io,
             uhp: PLAYER_MAX_HP,
@@ -39,97 +39,117 @@ impl Fight {
             " You: ",
             fg = if self.uhp <= MONSTER_ATTACK_DAMAGE {
                 Some(Color::Red)
-            }
-            else if self.uhp <= (PLAYER_MAX_HP - PLAYER_POTION_HEAL) {
+            } else if self.uhp <= (PLAYER_MAX_HP - PLAYER_POTION_HEAL) {
                 Some(Color::Yellow)
-            }
-            else {
+            } else {
                 Some(Color::Green)
             },
             format!("{:2}/{:2} HP", self.uhp, PLAYER_MAX_HP),
             fg = None,
             "  ",
-            fg = if self.upot == 0 { Some(Color::Red) } else { None },
+            fg = if self.upot == 0 {
+                Some(Color::Red)
+            } else {
+                None
+            },
             format!("{:2}/{:2} potions", self.upot, PLAYER_START_POTIONS),
             fg = None,
-            format!("            Enemy: {:3}/{:3} HP ",
-                    self.mhp, MONSTER_MAX_HP),
+            format!(
+                "            Enemy: {:3}/{:3} HP ",
+                self.mhp, MONSTER_MAX_HP
+            ),
         ]));
     }
     fn inner_loop(&mut self) {
         while self.uhp > 0 && self.mhp > 0 {
             self.update_status_line();
-            self.io.prompt(liso![
-                "What will you do?\n", fg = green, "> ", fg = None
-            ], true, false);
+            self.io.prompt(
+                liso!["What will you do?\n", fg = green, "> ", fg = None],
+                true,
+                false,
+            );
             match self.io.read_blocking() {
                 Response::Dead => panic!("Liso died!"),
                 Response::Quit => return,
                 Response::Input(wat) => {
-                    self.io.echoln(liso![dim,fg=green,"> ",fg=none,&wat]);
+                    self.io.echoln(liso![
+                        dim,
+                        fg = green,
+                        "> ",
+                        fg = none,
+                        &wat
+                    ]);
                     if wat == "a" || wat == "attack" {
                         self.mhp -= PLAYER_ATTACK_DAMAGE;
                         self.io.wrapln(liso![
-                            "You attack, dealing ", bold,
+                            "You attack, dealing ",
+                            bold,
                             format!("{}", PLAYER_ATTACK_DAMAGE),
-                            plain, " damage."
+                            plain,
+                            " damage."
                         ]);
                         self.mon_attack();
-                    }
-                    else if wat == "p" || wat == "potion" {
+                    } else if wat == "p" || wat == "potion" {
                         if self.upot == 0 {
                             self.io.wrapln("You are out of potions.");
-                        }
-                        else {
+                        } else {
                             self.upot -= 1;
-                            let new_hp = (self.uhp + PLAYER_POTION_HEAL).min(PLAYER_MAX_HP);
-                            let amount_healed = new_hp.saturating_sub(self.uhp);
+                            let new_hp = (self.uhp + PLAYER_POTION_HEAL)
+                                .min(PLAYER_MAX_HP);
+                            let amount_healed =
+                                new_hp.saturating_sub(self.uhp);
                             if amount_healed == 0 {
                                 self.io.wrapln(liso![
                                     "You drink one of your potions, ",
-                                    bold, fg = red,
+                                    bold,
+                                    fg = red,
                                     "wasting the whole thing!"
                                 ]);
-                            }
-                            else {
+                            } else {
                                 self.io.wrapln(liso![
                                     "You drink one of your potions, healing \
                                      away ",
                                     bold,
-                                    fg = if amount_healed < PLAYER_POTION_HEAL{
+                                    fg = if amount_healed < PLAYER_POTION_HEAL
+                                    {
                                         Some(Color::Yellow)
-                                    } else { None },
+                                    } else {
+                                        None
+                                    },
                                     format!("{}", amount_healed),
                                     reset,
                                     " damage.",
                                 ]);
                                 if amount_healed < PLAYER_POTION_HEAL {
-                                    self.io.wrapln("Some of that potion was wasted!");
+                                    self.io.wrapln(
+                                        "Some of that potion was wasted!",
+                                    );
                                 }
                                 self.uhp = new_hp;
                             }
                             self.mon_attack();
                         }
+                    } else {
+                        self.io.wrapln(
+                            "Your choices are 'attack' or \
+                                          'potion'.",
+                        );
                     }
-                    else {
-                        self.io.wrapln("Your choices are 'attack' or \
-                                          'potion'.");
-                    }
-                },
+                }
                 Response::Discarded(wat) => {
-                    self.io.echoln(liso![bold+dim,"X ",-bold,wat]);
-                },
+                    self.io.echoln(liso![bold + dim, "X ", -bold, wat]);
+                }
                 other => {
-                    self.io.notice(format!("unknown key {}",
-                                           other.as_unknown() as char),
-                                   Duration::from_secs(1));
-                },
+                    self.io.notice(
+                        format!("unknown key {}", other.as_unknown() as char),
+                        Duration::from_secs(1),
+                    );
+                }
             }
         }
         if self.uhp <= 0 {
             self.io.wrapln("You lose!");
-        }
-        else if self.mhp <= 0 {
+        } else if self.mhp <= 0 {
             self.io.wrapln("You win!");
         }
     }
@@ -147,14 +167,29 @@ impl Fight {
 struct FightCompletor;
 
 impl Completor for FightCompletor {
-    fn complete(&mut self, output: &Output, input: &str, _cursor: usize, _consecutive_presses: std::num::NonZeroU32) -> Option<Completion> {
+    fn complete(
+        &mut self,
+        output: &Output,
+        input: &str,
+        _cursor: usize,
+        _consecutive_presses: std::num::NonZeroU32,
+    ) -> Option<Completion> {
         match input.chars().next() {
-            Some('a') | Some('A') => Some(Completion::ReplaceWholeLine { new_line: "attack".to_owned(), new_cursor: 6 }),
-            Some('p') | Some('P') => Some(Completion::ReplaceWholeLine { new_line: "potion".to_owned(), new_cursor: 6 }),
+            Some('a') | Some('A') => Some(Completion::ReplaceWholeLine {
+                new_line: "attack".to_owned(),
+                new_cursor: 6,
+            }),
+            Some('p') | Some('P') => Some(Completion::ReplaceWholeLine {
+                new_line: "potion".to_owned(),
+                new_cursor: 6,
+            }),
             _ => {
-                output.notice("Choices are \"attack\" or \"potion\"", Duration::from_secs(5));
+                output.notice(
+                    "Choices are \"attack\" or \"potion\"",
+                    Duration::from_secs(5),
+                );
                 None
-            },
+            }
         }
     }
 }

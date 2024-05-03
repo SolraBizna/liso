@@ -2,5 +2,7 @@
 //! UNIX.
 
 pub(crate) fn sigstop_ourselves() {
-    unsafe { libc::raise(libc::SIGSTOP); }
+    unsafe {
+        libc::raise(libc::SIGSTOP);
+    }
 }

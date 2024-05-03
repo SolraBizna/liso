@@ -1,8 +1,6 @@
 use super::*;
 
-use std::{
-    io::{Stdout, Read},
-};
+use std::io::{Read, Stdout};
 
 mod cross;
 use cross::Crossterminal;
@@ -19,8 +17,12 @@ pub(crate) trait Term {
     /// Set the current attributes. (If possible, defer the actual control
     /// code outputting until the next time one of the `print_*` functions is
     /// called.)
-    fn set_attrs(&mut self, style: Style,
-                 fg: Option<Color>, bg: Option<Color>) -> LifeOrDeath;
+    fn set_attrs(
+        &mut self,
+        style: Style,
+        fg: Option<Color>,
+        bg: Option<Color>,
+    ) -> LifeOrDeath;
     fn reset_attrs(&mut self) -> LifeOrDeath;
     fn print(&mut self, text: &str) -> LifeOrDeath;
     fn print_char(&mut self, char: char) -> LifeOrDeath;
@@ -45,38 +47,43 @@ pub(crate) trait Term {
     fn cleanup(&mut self) -> LifeOrDeath;
 }
 
-pub(crate) fn new_term(req_tx: &std_mpsc::Sender<Request>)
--> Result<Box<dyn Term>, DummyError> {
+pub(crate) fn new_term(
+    req_tx: &std_mpsc::Sender<Request>,
+) -> Result<Box<dyn Term>, DummyError> {
     if let Ok(term) = std::env::var("TERM") {
-        let main = term.split("-").next().unwrap_or("");
+        let main = term.split('-').next().unwrap_or("");
         match main {
-            "st52" | "tw52" | "tt52" | "at" | "atari" | "atarist" | "atari_st"
-                | "vt52" | "stv52" | "stv52pc" => {
-                    // A real VT52, or (way more likely) an Atari ST (or
-                    // descendant) emulating one
-                    let monochrome = main == "vt52" || term.ends_with("-m");
-                    let num_colors = if monochrome { 2 }
-                    else if main.contains("st") {
-                        // When it's an Atari ST, there are three possibilities
-                        // - 80 x 50: high res = monochrome
-                        // - 80 x 25: medium res = 4 colors
-                        // - 40 x 25: low res = 16 colors
-                        // Anything else is a misconfiguration, so we just
-                        // assume monochrome to be safe.
-                        match crossterm::terminal::size().unwrap_or((80,25)) {
-                            (80, 50) => 2,
-                            (80, 25) => 4,
-                            (40, 25) => 16,
-                            _ => {
-                                eprintln!("Your terminal is configured \
-                                           incorrectly. Assuming monochrome.");
-                                2
-                            },
+            "st52" | "tw52" | "tt52" | "at" | "atari" | "atarist"
+            | "atari_st" | "vt52" | "stv52" | "stv52pc" => {
+                // A real VT52, or (way more likely) an Atari ST (or
+                // descendant) emulating one
+                let monochrome = main == "vt52" || term.ends_with("-m");
+                let num_colors = if monochrome {
+                    2
+                } else if main.contains("st") {
+                    // When it's an Atari ST, there are three possibilities
+                    // - 80 x 50: high res = monochrome
+                    // - 80 x 25: medium res = 4 colors
+                    // - 40 x 25: low res = 16 colors
+                    // Anything else is a misconfiguration, so we just
+                    // assume monochrome to be safe.
+                    match crossterm::terminal::size().unwrap_or((80, 25)) {
+                        (80, 50) => 2,
+                        (80, 25) => 4,
+                        (40, 25) => 16,
+                        _ => {
+                            eprintln!(
+                                "Your terminal is configured \
+                                           incorrectly. Assuming monochrome."
+                            );
+                            2
                         }
                     }
-                    else { 16 };
-                    return Ok(Box::new(Vt52::new(req_tx.clone(), num_colors)?))
-                },
+                } else {
+                    16
+                };
+                return Ok(Box::new(Vt52::new(req_tx.clone(), num_colors)?));
+            }
             _ => (), // fall through
         }
     }
