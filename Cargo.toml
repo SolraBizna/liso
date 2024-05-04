@@ -3,7 +3,7 @@ members = [".", "examples/fight"]
 
 [package]
 name = "liso"
-version = "1.2.0"
+version = "1.2.1"
 description = "Line Input with Simultaneous Output: input lines are editable, output lines are never scrambled, and all of it thread safe."
 authors = ["Solra Bizna <solra@bizna.name>"]
 edition = "2021"
@@ -18,10 +18,10 @@ crossterm = "0.27.0"
 errno = {version = "0.3.8", optional = true}
 libc = {version = "0.2.144", optional = true}
 parking_lot = {version = "0.12.2", optional = true}
+serde = { version = "1.0", optional = true, features = ["derive"] }
 tokio = {version = "1.37.0", default-features = false, features = ["rt", "sync", "time"]}
 textwrap = {version = "0.16.1", optional = true}
 unicode-width = "0.1.12"
-serde = { version = "1.0", optional = true, features = ["derive"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = {version = "0.2.144"}
@@ -38,7 +38,7 @@ completion = []
 global = ["dep:parking_lot"]
 # History support.
 history = []
-# `wrapln()` function.
-wrap = ["dep:textwrap"]
 # derive Serialize and Deserialize for Line, LineElement, Color, and Style
 serde = ["dep:serde", "bitflags/serde"]
+# `wrapln()` function.
+wrap = ["dep:textwrap"]
