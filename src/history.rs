@@ -16,11 +16,12 @@ pub struct History {
     /// Whether to strip existing duplicates whenever we add new lines to the
     /// history.
     strip_duplicates: bool,
-    autosave_handler:
-        Option<Box<dyn Fn(&History) -> io::Result<()> + Send + Sync>>,
+    autosave_handler: Option<Box<AutosaveHandlerFn>>,
     autosave_interval: Option<NonZeroUsize>,
     lines_since_last_autosave: usize,
 }
+
+pub type AutosaveHandlerFn = dyn Fn(&History) -> io::Result<()> + Send + Sync;
 
 impl History {
     /// Create a new, empty History with default options.
@@ -182,9 +183,7 @@ impl History {
     /// autosave handler, if any, is dropped.
     pub fn set_autosave_handler(
         &mut self,
-        autosave_handler: Option<
-            Box<dyn Fn(&History) -> io::Result<()> + Send + Sync>,
-        >,
+        autosave_handler: Option<Box<AutosaveHandlerFn>>,
     ) -> &mut History {
         self.autosave_handler = autosave_handler;
         self

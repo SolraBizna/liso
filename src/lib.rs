@@ -230,7 +230,7 @@ impl From<std_mpsc::RecvTimeoutError> for DummyError {
 /// - Instead of setting white-on-black or black-on-white, consider using
 ///   [inverse video](struct.Style.html#associatedconstant.INVERSE) to achieve
 ///   your goal instead.
-#[cfg_attr(feature="serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum Color {
@@ -400,7 +400,7 @@ pub struct InputOutput {
 const MAX_DEATH_COUNT: u32 = 9;
 
 /// An individual styled span within a line.
-#[cfg_attr(feature="serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LineElement {
     /// The style in effect.
@@ -419,7 +419,7 @@ struct LineElement {
 /// display. The [`liso!`](macro.liso.html) macro is extremely convenient for
 /// building these. You can also pass a `String`, `&str`, or `Cow<str>` to
 /// most Liso functions that accept a `Line`.
-#[cfg_attr(feature="serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Line {
     text: String,

@@ -33,7 +33,7 @@ fn pipe_worker(
                         while buf.ends_with('\n') || buf.ends_with('\r') {
                             buf.pop();
                         }
-                        if let Err(_) = req_tx.send(Request::RawInput(buf)) {
+                        if req_tx.send(Request::RawInput(buf)).is_err() {
                             break;
                         }
                     }
@@ -56,7 +56,7 @@ fn pipe_worker(
             #[cfg(feature = "capture-stderr")]
             Request::StderrLine(_) => unreachable!(),
             Request::RawInput(x) => {
-                if let Err(_) = tx.send(Response::Input(x)) {
+                if tx.send(Response::Input(x)).is_err() {
                     break;
                 }
             }
@@ -169,6 +169,7 @@ impl TtyState {
         term.newline()?;
         Ok(())
     }
+    #[allow(clippy::too_many_arguments)]
     fn maybe_report(
         &self,
         index: usize,
@@ -224,6 +225,7 @@ impl TtyState {
         }
         Ok(())
     }
+    #[allow(clippy::too_many_arguments)]
     fn output_char(
         &self,
         term: &mut RefMut<'_, Box<dyn Term>>,

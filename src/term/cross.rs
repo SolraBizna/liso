@@ -12,7 +12,7 @@ use std::result::Result; // override crossterm::Result
 pub(crate) struct Crossterminal {
     suspended: bool,
     old_hook:
-        Option<Box<dyn Fn(&panic::PanicInfo<'_>) + Sync + Send + 'static>>,
+        Option<Box<dyn Fn(&panic::PanicHookInfo<'_>) + Sync + Send + 'static>>,
     stdout: Stdout,
     cur_style: Style,
     cur_fg: Option<Color>,

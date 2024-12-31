@@ -14,7 +14,7 @@ use unicode_width::UnicodeWidthChar;
 pub(crate) struct Vt52 {
     suspended: bool,
     old_hook:
-        Option<Box<dyn Fn(&panic::PanicInfo<'_>) + Sync + Send + 'static>>,
+        Option<Box<dyn Fn(&panic::PanicHookInfo<'_>) + Sync + Send + 'static>>,
     stdout: Stdout,
     num_colors: u8,
     cur_style: Style,

@@ -12,7 +12,6 @@ use vt52::Vt52;
 /// We always use `crossterm` for enabling/disabling raw mode and for detecting
 /// the size of the terminal, but if the TERM/TERMINFO environment variables
 /// are set appropriately, we might use one of the other variants.
-
 pub(crate) trait Term {
     /// Set the current attributes. (If possible, defer the actual control
     /// code outputting until the next time one of the `print_*` functions is
