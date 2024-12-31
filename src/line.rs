@@ -1,5 +1,7 @@
 use super::*;
 
+mod add_ansi;
+
 /// An individual styled span within a line.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]

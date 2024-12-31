@@ -224,6 +224,7 @@ impl From<std_mpsc::RecvTimeoutError> for DummyError {
 ///
 /// And some guidelines to adhere to:
 ///
+/// - Respect the [set the `NO_COLOR` environment variable][1], if it is set.
 /// - Never assume you know what color `None` is. It could be white, black, or
 ///   something entirely unexpected.
 /// - Never specify a foreground color of `White` or `Black` without also
@@ -233,6 +234,8 @@ impl From<std_mpsc::RecvTimeoutError> for DummyError {
 /// - Instead of setting white-on-black or black-on-white, consider using
 ///   [inverse video](struct.Style.html#associatedconstant.INVERSE) to achieve
 ///   your goal instead.
+///
+/// [1]: http://no-color.org/
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -1312,6 +1315,15 @@ macro_rules! liso_add {
         $line.toggle_style($crate::Style::ITALIC);
         $crate::liso_add!($line, $($rest)*);
     };
+    // Interpret ANSI sequences
+    // `ansi` <text>
+    ($line:ident, ansi $expr:expr, $($rest:tt)*) => {
+        $line.add_ansi_text($expr);
+        $crate::liso_add!($line, $($rest)*);
+    };
+    ($line:ident, ansi $expr:expr) => {
+        $line.add_ansi_text($expr);
+    };
     // Anything else: text to output.
     ($line:ident, $expr:expr, $($rest:tt)*) => {
         $line.add_text($expr);
@@ -1353,6 +1365,9 @@ macro_rules! liso_add {
 ///   Set the background color.
 /// - `reset`  
 ///   Clear all style and color information.
+/// - `ansi <text>`
+///   Text to output, with interpretation of some ANSI escape sequences found
+///   in the text.
 /// - `<text>`  
 ///   Text to output.
 ///
