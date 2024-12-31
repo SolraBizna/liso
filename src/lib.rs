@@ -1148,6 +1148,11 @@ impl Output {
     {
         self.send(Request::Status(line.map(T::into)))
     }
+    /// Removes the status line. This is equivalent to `status(None)` but
+    /// without needing a turbofish.
+    pub fn remove_status(&self) {
+        self.send(Request::Status(None))
+    }
     /// Displays a (possibly styled) notice that temporarily replaces the
     /// prompt. The notice will disappear when the allotted time elapses, when
     /// the user presses any key, or when another notice is displayed,
