@@ -21,6 +21,7 @@ pub(crate) struct Vt52 {
     cur_fg: u8,
     cur_bg: u8,
     white_on_black: bool,
+    input_thread: InterruptibleStdinThread,
 }
 
 fn input_thread(
@@ -153,9 +154,11 @@ impl Vt52 {
                 }
             })
             .unwrap();
-        std::thread::Builder::new()
+        let input_thread = std::thread::Builder::new()
             .name("Liso input processing thread".to_owned())
-            .spawn(move || input_thread(input_rx, req_tx))
+            .spawn(move || {
+                let _ = input_thread(input_rx, req_tx);
+            })
             .unwrap();
         let stdout = std::io::stdout();
         let mut ret = Vt52 {
@@ -167,6 +170,7 @@ impl Vt52 {
             cur_bg: 0,
             num_colors,
             white_on_black,
+            input_thread: InterruptibleStdinThread::new(input_thread),
         };
         ret.unsuspend()?;
         Ok(ret)
@@ -417,6 +421,7 @@ impl Term for Vt52 {
         if !self.suspended {
             self.suspend()?;
         }
+        self.input_thread.interrupt();
         Ok(())
     }
 }

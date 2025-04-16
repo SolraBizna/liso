@@ -21,27 +21,29 @@ fn pipe_worker(
     rx: std_mpsc::Receiver<Request>,
     tx: tokio_mpsc::UnboundedSender<Response>,
 ) -> LifeOrDeath {
-    std::thread::Builder::new()
-        .name("Liso input thread".to_owned())
-        .spawn(move || {
-            let stdin = std::io::stdin();
-            let mut stdin = stdin.lock();
-            loop {
-                let mut buf = String::new();
-                match stdin.read_line(&mut buf) {
-                    Ok(_) => {
-                        while buf.ends_with('\n') || buf.ends_with('\r') {
-                            buf.pop();
+    let mut input_thread = InterruptibleStdinThread::new(
+        std::thread::Builder::new()
+            .name("Liso input thread".to_owned())
+            .spawn(move || {
+                let stdin = std::io::stdin();
+                let mut stdin = stdin.lock();
+                loop {
+                    let mut buf = String::new();
+                    match stdin.read_line(&mut buf) {
+                        Ok(_) => {
+                            while buf.ends_with('\n') || buf.ends_with('\r') {
+                                buf.pop();
+                            }
+                            if req_tx.send(Request::RawInput(buf)).is_err() {
+                                break;
+                            }
                         }
-                        if req_tx.send(Request::RawInput(buf)).is_err() {
-                            break;
-                        }
+                        Err(_) => break,
                     }
-                    Err(_) => break,
                 }
-            }
-        })
-        .unwrap();
+            })
+            .unwrap(),
+    );
     while let Ok(request) = rx.recv() {
         match request {
             #[cfg(feature = "wrap")]
@@ -65,6 +67,7 @@ fn pipe_worker(
             _ => (),
         }
     }
+    input_thread.interrupt();
     Ok(())
 }
 
@@ -1444,6 +1447,7 @@ fn tty_worker(
     state.rollin()?;
     state.cleanup()?;
     crossterm::terminal::disable_raw_mode()?;
+    drop(rx);
     Ok(())
 }
 

@@ -156,6 +156,21 @@ pub use completion::*;
 #[cfg(feature = "capture-stderr")]
 mod stderr_capture;
 
+#[cfg(unix)]
+use unix_util::InterruptibleStdinThread;
+
+#[cfg(not(unix))]
+pub(crate) struct InterruptibleStdinThread;
+#[cfg(not(unix))]
+impl InterruptibleStdinThread {
+    pub fn new(_join_handle: JoinHandle<()>) -> InterruptibleStdinThread {
+        InterruptibleStdinThread
+    }
+    pub fn interrupt(&mut self) {
+        // placebo!
+    }
+}
+
 /// When handling input ourselves, this is the amount of time to wait after
 /// receiving an escape before we're sure we don't have an escape sequence on
 /// our hands.
@@ -744,8 +759,8 @@ impl Output {
     /// it resumes.) If you want to create a subprocess that can use stdin and
     /// stdout, you'll have to write your own pipe handling based around Liso.
     /// If you want to create a subprocess that can interactively use the
-    /// terminal—you have to drop the `InputOutput` instance, and all of the
-    /// existing `Output` instances will go dead as a result. Just don't do it!
+    /// terminal, see the note in
+    /// [`blocking_die`])(struct.InputOutput.html#method.blocking_die).
     pub fn suspend_and_run<F: 'static + FnMut() + Send>(&self, f: F) {
         self.send(Request::SuspendAndRun(Box::new(f)))
     }
@@ -905,6 +920,18 @@ impl InputOutput {
     ///
     /// If `OutputOnly`s cloned from this `InputOutput` exist, they will be
     /// "dead"; calling their methods will panic!
+    ///
+    /// On UNIX platforms, after calling this function (or dropping the
+    /// `InputOutput` instance), it should be safe to do any of the following:
+    ///
+    /// - Call `InputOutput::new` and start using Liso again.
+    /// - Perform input and output involving the stdin, stdout, and stderr
+    ///   streams as if nothing were wrong (e.g. with the standard `println!`
+    ///   macro).
+    /// - Spawn subprocesses that do their own input or output.
+    ///
+    /// On non-UNIX platforms, this is not likely to work! (See
+    /// [issue #14](https://github.com/SolraBizna/liso/issues/14).)
     pub fn blocking_die(mut self) {
         self.actually_blocking_die()
     }

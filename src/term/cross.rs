@@ -17,6 +17,7 @@ pub(crate) struct Crossterminal {
     cur_style: Style,
     cur_fg: Option<Color>,
     cur_bg: Option<Color>,
+    input_thread: InterruptibleStdinThread,
 }
 
 fn parse_csi_sequence(
@@ -224,7 +225,7 @@ impl Crossterminal {
                 default_crossterm_input
             }
         };
-        if crossterm_input {
+        let input_thread = if crossterm_input {
             std::thread::Builder::new()
                 .name("Liso input thread".to_owned())
                 .spawn(move || {
@@ -235,9 +236,15 @@ impl Crossterminal {
                         }
                     }
                 })
-                .unwrap();
+                .unwrap()
         } else {
             let (input_tx, input_rx) = std_mpsc::sync_channel(1);
+            std::thread::Builder::new()
+                .name("Liso input processing thread".to_owned())
+                .spawn(move || {
+                    let _ = input_thread(input_rx, req_tx);
+                })
+                .unwrap();
             std::thread::Builder::new()
                 .name("Liso raw stdin thread".to_owned())
                 .spawn(move || {
@@ -257,12 +264,8 @@ impl Crossterminal {
                         }
                     }
                 })
-                .unwrap();
-            std::thread::Builder::new()
-                .name("Liso input processing thread".to_owned())
-                .spawn(move || input_thread(input_rx, req_tx))
-                .unwrap();
-        }
+                .unwrap()
+        };
         let stdout = std::io::stdout();
         let mut ret = Crossterminal {
             stdout,
@@ -271,6 +274,7 @@ impl Crossterminal {
             cur_style: Style::PLAIN,
             cur_fg: None,
             cur_bg: None,
+            input_thread: InterruptibleStdinThread::new(input_thread),
         };
         ret.unsuspend()?;
         Ok(ret)
@@ -472,6 +476,7 @@ impl Term for Crossterminal {
         if !self.suspended {
             self.suspend()?;
         }
+        self.input_thread.interrupt();
         Ok(())
     }
 }
