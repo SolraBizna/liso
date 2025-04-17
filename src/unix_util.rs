@@ -1,7 +1,10 @@
 //! This module contains utility functions required for proper functioning on
 //! UNIX.
 
-use std::{os::unix::thread::JoinHandleExt, thread::JoinHandle};
+use std::{
+    os::{fd::AsRawFd, unix::thread::JoinHandleExt},
+    thread::JoinHandle,
+};
 
 use nix::{
     sys::{
@@ -10,7 +13,7 @@ use nix::{
             raise, sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal,
         },
     },
-    unistd::{close, dup, dup2},
+    unistd::{close, dup, dup2, pipe},
 };
 
 pub(crate) fn sigstop_ourselves() {
@@ -41,6 +44,10 @@ impl InterruptibleStdinThread {
         }
         // oh boy!
         unsafe {
+            let (rx, tx) =
+                pipe().expect("unable to create a body double for stdin");
+            // note: pipe returns OwnedFds, so rx and tx will close on drop
+            drop(tx); // close the write side
             let hidden_stdin =
                 dup(0).expect("unable to put stdin into witness relocation");
             let new_action = SigAction::new(
@@ -50,7 +57,8 @@ impl InterruptibleStdinThread {
             );
             let old_action = sigaction(Signal::SIGHUP, &new_action)
                 .expect("unable to override SIGHUP handler");
-            close(0).expect("unable to fake stdin's death");
+            dup2(rx.as_raw_fd(), 0)
+                .expect("unable to replace stdin with a body double");
             let _ =
                 pthread_kill(join_handle.as_pthread_t(), Some(Signal::SIGHUP));
             join_handle.join().expect("unable to join stdin thread");
