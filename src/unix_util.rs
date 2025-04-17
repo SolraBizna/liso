@@ -57,8 +57,13 @@ impl InterruptibleStdinThread {
             );
             let old_action = sigaction(Signal::SIGHUP, &new_action)
                 .expect("unable to override SIGHUP handler");
-            dup2(rx.as_raw_fd(), 0)
+            let replaced_stdin = dup2(rx.as_raw_fd(), 0)
                 .expect("unable to replace stdin with a body double");
+            assert_eq!(
+                replaced_stdin, 0,
+                "attempt to replace stdin with a body double failed \
+                despite appearing to succeed"
+            );
             let _ =
                 pthread_kill(join_handle.as_pthread_t(), Some(Signal::SIGHUP));
             join_handle.join().expect("unable to join stdin thread");
