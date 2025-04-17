@@ -163,7 +163,9 @@ use unix_util::InterruptibleStdinThread;
 pub(crate) struct InterruptibleStdinThread;
 #[cfg(not(unix))]
 impl InterruptibleStdinThread {
-    pub fn new(_join_handle: JoinHandle<()>) -> InterruptibleStdinThread {
+    pub fn new(
+        _join_handle: std::thread::JoinHandle<()>,
+    ) -> InterruptibleStdinThread {
         InterruptibleStdinThread
     }
     pub fn interrupt(&mut self) {
