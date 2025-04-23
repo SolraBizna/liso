@@ -1047,7 +1047,10 @@ impl TtyState {
             Event::Resize(..) => self.rollin()?,
             Event::Mouse(..) => (),
             Event::Key(k) => {
-                use crossterm::event::{KeyCode, KeyModifiers};
+                use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+                if k.kind == KeyEventKind::Release {
+                    return Ok(());
+                }
                 if k.modifiers.contains(KeyModifiers::CONTROL) {
                     #[cfg(feature = "completion")]
                     if k.code == KeyCode::Char('i') {
