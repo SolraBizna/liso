@@ -4,4 +4,4 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-liso = {path = "../.."}
+liso = { path = "../.." }

@@ -1,5 +1,4 @@
-//! This module contains utility functions required for proper functioning on
-//! UNIX.
+//! This module contains utilites required for proper functioning on UNIX.
 
 use std::{
     os::{fd::AsRawFd, unix::thread::JoinHandleExt},
@@ -77,5 +76,8 @@ impl InterruptibleStdinThread {
             );
             let _ = close(hidden_stdin);
         }
+    }
+    pub fn placebo_check() {
+        // do nothing, as we are not a placebo
     }
 }

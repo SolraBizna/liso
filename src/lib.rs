@@ -142,6 +142,8 @@ mod worker;
 use term::*;
 #[cfg(unix)]
 mod unix_util;
+#[cfg(all(not(unix), windows))]
+mod win_util;
 
 #[cfg(feature = "history")]
 mod history;
@@ -158,10 +160,12 @@ mod stderr_capture;
 
 #[cfg(unix)]
 use unix_util::InterruptibleStdinThread;
+#[cfg(all(not(unix), windows))]
+use win_util::InterruptibleStdinThread;
 
-#[cfg(not(unix))]
+#[cfg(all(not(unix), not(windows)))]
 pub(crate) struct InterruptibleStdinThread;
-#[cfg(not(unix))]
+#[cfg(all(not(unix), not(windows)))]
 impl InterruptibleStdinThread {
     pub fn new(
         _join_handle: std::thread::JoinHandle<()>,
@@ -170,6 +174,28 @@ impl InterruptibleStdinThread {
     }
     pub fn interrupt(&mut self) {
         // placebo!
+    }
+    pub fn placebo_check() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static ONCE: AtomicBool = AtomicBool::new(false);
+        loop {
+            match ONCE.compare_exchange_weak(
+                false,
+                true,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => break,
+                Err(false) => continue,
+                Err(true) => {
+                    panic!(
+                        "Liso was instantiated more than once! (On this \
+                         platform, Liso may only be instantiated once per \
+                         run.)"
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -849,6 +875,10 @@ impl InputOutput {
                         active at the same time!"
             )
         }
+        // There are platforms where we can't safely clean up the stdin thread,
+        // and on those platforms, InputOutput::new() is only safe to call
+        // once. This function takes care of checking for that.
+        InterruptibleStdinThread::placebo_check();
         let (request_tx, request_rx) = std_mpsc::channel();
         let (response_tx, response_rx) = tokio_mpsc::unbounded_channel();
         let request_tx_clone = request_tx.clone();

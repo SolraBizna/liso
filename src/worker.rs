@@ -1242,6 +1242,8 @@ impl TtyState {
         term.set_attrs(Style::PLAIN, None, None)?;
         term.suspend()?;
         std::println!("^Z");
+        // Note: The stdin thread requires no special handling here, because
+        // it will be suspended along with the rest of the process.
         unix_util::sigstop_ourselves();
         term.unsuspend()?;
         self.rollout_needed = true;
