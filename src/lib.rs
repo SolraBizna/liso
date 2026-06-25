@@ -1086,7 +1086,7 @@ impl InputOutput {
     /// Lock the `History` for reading and return a reference to it. Make it
     /// brief!
     #[cfg(feature = "history")]
-    pub fn read_history(&self) -> RwLockReadGuard<History> {
+    pub fn read_history(&'_ self) -> RwLockReadGuard<'_, History> {
         self.history.read().unwrap()
     }
 }

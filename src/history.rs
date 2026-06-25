@@ -59,10 +59,7 @@ impl History {
         let mut filename = match history_path.file_name() {
             Some(x) => x.to_owned(),
             None => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "history file had no filename",
-                ))
+                return Err(io::Error::other("history file had no filename"))
             }
         };
         filename.push("^");
@@ -71,10 +68,7 @@ impl History {
         let mut filename = match history_path.file_name() {
             Some(x) => x.to_owned(),
             None => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "history file had no filename",
-                ))
+                return Err(io::Error::other("history file had no filename"))
             }
         };
         filename.push("~");

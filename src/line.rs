@@ -62,7 +62,7 @@ impl Line {
         &self.text
     }
     fn append_text(&mut self, i: Cow<str>) {
-        if i.len() == 0 {
+        if i.is_empty() {
             return;
         }
         if self.text.is_empty() {
@@ -111,7 +111,7 @@ impl Line {
         T: Into<Cow<'a, str>>,
     {
         let i: Cow<str> = i.into();
-        if i.len() == 0 {
+        if i.is_empty() {
             return self;
         }
         // we regard as a control character anything in the C0 and C1 control
@@ -618,10 +618,7 @@ impl<'a> LineCharIterator<'a> {
 impl Iterator for LineCharIterator<'_> {
     type Item = LineChar;
     fn next(&mut self) -> Option<LineChar> {
-        let (index, ch) = match self.indices.next() {
-            Some(x) => x,
-            None => return None,
-        };
+        let (index, ch) = self.indices.next()?;
         while self.cur_element < self.line.elements.len()
             && self.line.elements[self.cur_element].end <= index
         {

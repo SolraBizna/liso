@@ -1046,9 +1046,9 @@ impl TtyState {
     }
     fn handle_key(
         &mut self,
-        tx: &mut tokio_mpsc::UnboundedSender<Response>,
+        _tx: &mut tokio_mpsc::UnboundedSender<Response>,
         code: KeyCode,
-        ded_tx: &mut std_mpsc::SyncSender<Instant>,
+        _ded_tx: &mut std_mpsc::SyncSender<Instant>,
     ) -> LifeOrDeath {
         if !self.input_allowed {
             return Ok(());
