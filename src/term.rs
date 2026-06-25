@@ -2,8 +2,8 @@ use super::*;
 
 use std::io::{Read, Stdout};
 
-mod cross;
-use cross::Crossterminal;
+mod ansi;
+use ansi::AnsiTerminal;
 mod vt52;
 use vt52::Vt52;
 
@@ -59,14 +59,17 @@ pub(crate) fn new_term(
                 let monochrome = main == "vt52" || term.ends_with("-m");
                 let num_colors = if monochrome {
                     2
-                } else if main.contains("st") {
+                } else if main.starts_with("st") {
                     // When it's an Atari ST, there are three possibilities
                     // - 80 x 50: high res = monochrome
                     // - 80 x 25: medium res = 4 colors
                     // - 40 x 25: low res = 16 colors
                     // Anything else is a misconfiguration, so we just
                     // assume monochrome to be safe.
-                    match crossterm::terminal::size().unwrap_or((80, 25)) {
+                    match termsize::get()
+                        .map(|x| (x.cols as u32, x.rows as u32))
+                        .unwrap_or((80, 50))
+                    {
                         (80, 50) => 2,
                         (80, 25) => 4,
                         (40, 25) => 16,
@@ -86,5 +89,5 @@ pub(crate) fn new_term(
             _ => (), // fall through
         }
     }
-    Ok(Box::new(Crossterminal::new(req_tx.clone())?))
+    Ok(Box::new(AnsiTerminal::new(req_tx.clone())?))
 }

@@ -129,10 +129,6 @@ use std::sync::{Arc, RwLock, RwLockReadGuard};
 use std::num::NonZeroU32;
 
 use bitflags::bitflags;
-use crossterm::event::Event;
-use crossterm::style::{
-    Attribute as CtAttribute, Attributes as CtAttributes, Color as CtColor,
-};
 use tokio::sync::mpsc as tokio_mpsc;
 
 mod line;
@@ -141,9 +137,14 @@ mod term;
 mod worker;
 use term::*;
 #[cfg(unix)]
-mod unix_util;
+#[path = "util/unix.rs"]
+mod util;
 #[cfg(all(not(unix), windows))]
-mod win_util;
+#[path = "util/windows.rs"]
+mod util;
+#[cfg(all(not(unix), not(windows)))]
+#[path = "util/dummy.rs"]
+mod util;
 
 #[cfg(feature = "history")]
 mod history;
@@ -158,57 +159,39 @@ pub use completion::*;
 #[cfg(feature = "capture-stderr")]
 mod stderr_capture;
 
-#[cfg(unix)]
-use unix_util::InterruptibleStdinThread;
-#[cfg(all(not(unix), windows))]
-use win_util::InterruptibleStdinThread;
+use util::{enter_raw_mode, exit_raw_mode, InterruptibleStdinThread};
 
-#[cfg(all(not(unix), not(windows)))]
-pub(crate) struct InterruptibleStdinThread;
-#[cfg(all(not(unix), not(windows)))]
-impl InterruptibleStdinThread {
-    pub fn new(
-        _join_handle: std::thread::JoinHandle<()>,
-    ) -> InterruptibleStdinThread {
-        InterruptibleStdinThread
-    }
-    pub fn interrupt(&mut self) {
-        // placebo!
-    }
-    pub fn placebo_check() {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        static ONCE: AtomicBool = AtomicBool::new(false);
-        loop {
-            match ONCE.compare_exchange_weak(
-                false,
-                true,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ) {
-                Ok(_) => break,
-                Err(false) => continue,
-                Err(true) => {
-                    panic!(
-                        "Liso was instantiated more than once! (On this \
-                         platform, Liso may only be instantiated once per \
-                         run.)"
-                    )
-                }
-            }
-        }
-    }
+/// Internal use only: Representations for keyboard keys that are important to
+/// our operation but that don't produce text.
+enum KeyCode {
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    Up,
+    Down,
+    Left,
+    Right,
+    Delete,
+    Backspace,
 }
 
-/// When handling input ourselves, this is the amount of time to wait after
-/// receiving an escape before we're sure we don't have an escape sequence on
-/// our hands.
+/// This is the amount of time to wait after receiving an escape before we're
+/// sure we don't have an escape sequence on our hands.
 ///
 /// This is fairly long to ensure that, even on a 300 baud modem, we would
 /// *definitely* have received another character in the sequence before this
 /// deadline elapses. (I say that it's fairly long, but curses waits an entire
 /// **second**, which is much, much, much too long!)
 ///
-/// If Crossterm input is being used, this is ignored.
+/// One side effect of making this so short is that it's very difficult, often
+/// impossible, to manually input an escape sequence this way. Only crazy nerds
+/// like the author of this crate ever even try or want to enter escape
+/// sequences, and, no matter how long we wait for a manual escape sequence,
+/// there would always be a hypothetical user who types slower than that, AND
+/// we would be inconveniencing people who think that pressing the Escape key
+/// should result in the detection of the Escape key instead of a weird hitch
+/// in the input processing of their application followed by a beep … !!!
 const ESCAPE_DELAY: Duration = Duration::new(0, 1000000000 / 24);
 
 /// We have to handle errors. There are two kinds we'll routinely face:
@@ -303,21 +286,34 @@ pub enum Color {
 }
 
 impl Color {
-    // Convert to the equivalent Crossterm color.
-    fn to_crossterm(self) -> CtColor {
+    // As an ANSI sequence to set the foreground color.
+    fn as_ansi_fg(&self) -> &'static str {
         match self {
-            Color::Black => CtColor::Black,
-            Color::Red => CtColor::DarkRed,
-            Color::Green => CtColor::DarkGreen,
-            Color::Yellow => CtColor::DarkYellow,
-            Color::Blue => CtColor::DarkBlue,
-            Color::Cyan => CtColor::DarkCyan,
-            Color::Magenta => CtColor::DarkMagenta,
-            Color::White => CtColor::Grey,
+            Color::Black => "30",
+            Color::Red => "31",
+            Color::Green => "32",
+            Color::Yellow => "33",
+            Color::Blue => "34",
+            Color::Cyan => "35",
+            Color::Magenta => "36",
+            Color::White => "37",
+        }
+    }
+    // As an ANSI sequence to set the background color.
+    fn as_ansi_bg(&self) -> &'static str {
+        match self {
+            Color::Black => "40",
+            Color::Red => "41",
+            Color::Green => "42",
+            Color::Yellow => "43",
+            Color::Blue => "44",
+            Color::Cyan => "45",
+            Color::Magenta => "46",
+            Color::White => "47",
         }
     }
     // Convert to an Atari ST 16-color palette index (bright).
-    fn to_atari16_bright(self) -> u8 {
+    fn as_atari16_bright(&self) -> u8 {
         match self {
             Color::Black => 8,
             Color::Red => 1,
@@ -330,7 +326,7 @@ impl Color {
         }
     }
     // Convert to an Atari ST 16-color palette index (dim).
-    fn to_atari16_dim(self) -> u8 {
+    fn as_atari16_dim(&self) -> u8 {
         match self {
             Color::Black => 15,
             Color::Red => 3,
@@ -343,7 +339,7 @@ impl Color {
         }
     }
     // Convert to the nearest Atari ST 4-color palette index.
-    fn to_atari4(self) -> u8 {
+    fn as_atari4(&self) -> u8 {
         match self {
             Color::Black => 15,
             Color::Red => 1,
@@ -393,28 +389,6 @@ bitflags! {
         const REVERSE = 1 << 3;
         /// Prints in an italic font.
         const ITALIC = 1 << 4;
-    }
-}
-
-impl Style {
-    fn as_crossterm(&self) -> CtAttributes {
-        let mut ret = CtAttributes::default();
-        if self.contains(Style::BOLD) {
-            ret.set(CtAttribute::Bold)
-        }
-        if self.contains(Style::DIM) {
-            ret.set(CtAttribute::Dim)
-        }
-        if self.contains(Style::UNDERLINE) {
-            ret.set(CtAttribute::Underlined)
-        }
-        if self.contains(Style::INVERSE) {
-            ret.set(CtAttribute::Reverse)
-        }
-        if self.contains(Style::ITALIC) {
-            ret.set(CtAttribute::Italic)
-        }
-        ret
     }
 }
 
@@ -468,8 +442,9 @@ enum Request {
         clear_input: bool,
     },
     /// Sent by `suspend_and_run`
+    // TODO: FnOnce?
     SuspendAndRun(Box<dyn FnMut() + Send>),
-    /// Sent by the input task, when some input is inputted
+    /// Sent by `bell`
     Bell,
     /// Sent when we're cleaning up
     Die,
@@ -482,12 +457,14 @@ enum Request {
     /// out. (The pipe worker doesn't interpret escape sequences and therefore
     /// does no such processing.)
     RawInput(String),
+    /// Sent whenever a special key is received. That is, one that is not a
+    /// control character and does not produce text.
+    Key(KeyCode),
+    /// Sent whenever a single character is received, and sending an entire
+    /// `String` would be wasteful.
+    Char(char),
     /// Used to implement notices.
     Heartbeat,
-    /// If the crossterm event system is being used, this is an event received.
-    /// This can be the case even if the crossterm *input* system isn't being
-    /// used.
-    CrosstermEvent(crossterm::event::Event),
     /// Sent by `send_custom`.
     Custom(Box<dyn Any + Send>),
     /// Sent when the `History` is changed.

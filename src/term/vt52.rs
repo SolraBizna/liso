@@ -5,7 +5,6 @@ use std::{
     panic,
 };
 
-use crossterm::{event::KeyEvent, *};
 use std::result::Result; // override crossterm::Result
 use unicode_width::UnicodeWidthChar;
 
@@ -55,14 +54,7 @@ fn input_thread(
                 {
                     // Just send the escape
                     start += 1;
-                    let event = KeyEvent {
-                        code: event::KeyCode::Esc,
-                        modifiers: event::KeyModifiers::empty(),
-                        kind: event::KeyEventKind::Press,
-                        state: event::KeyEventState::empty(),
-                    };
-                    let event = Event::Key(event);
-                    req_tx.send(Request::CrosstermEvent(event))?;
+                    req_tx.send(Request::RawInput("\x1B".to_string()))?;
                     continue;
                 }
                 // all VT52 escape sequences are two-byte.
@@ -190,12 +182,12 @@ impl Term for Vt52 {
         let (fg, bg) = if self.white_on_black {
             match self.num_colors {
                 16 => (
-                    fg.map(Color::to_atari16_bright).unwrap_or(0),
-                    bg.map(Color::to_atari16_dim).unwrap_or(15),
+                    fg.map(|x| x.as_atari16_bright()).unwrap_or(0),
+                    bg.map(|x| x.as_atari16_dim()).unwrap_or(15),
                 ),
                 4 => (
-                    fg.map(Color::to_atari4).unwrap_or(0),
-                    bg.map(Color::to_atari4).unwrap_or(15),
+                    fg.map(|x| x.as_atari4()).unwrap_or(0),
+                    bg.map(|x| x.as_atari4()).unwrap_or(15),
                 ),
                 2 => (0, 15),
                 _ => unreachable!(),
@@ -203,12 +195,12 @@ impl Term for Vt52 {
         } else {
             match self.num_colors {
                 16 => (
-                    fg.map(Color::to_atari16_dim).unwrap_or(15),
-                    bg.map(Color::to_atari16_bright).unwrap_or(0),
+                    fg.map(|x| x.as_atari16_dim()).unwrap_or(15),
+                    bg.map(|x| x.as_atari16_bright()).unwrap_or(0),
                 ),
                 4 => (
-                    fg.map(Color::to_atari4).unwrap_or(15),
-                    bg.map(Color::to_atari4).unwrap_or(0),
+                    fg.map(|x| x.as_atari4()).unwrap_or(15),
+                    bg.map(|x| x.as_atari4()).unwrap_or(0),
                 ),
                 2 => (15, 0),
                 _ => unreachable!(),
@@ -365,7 +357,7 @@ impl Term for Vt52 {
         Ok(())
     }
     fn get_width(&mut self) -> u32 {
-        terminal::size().unwrap_or((80, 24)).0 as u32
+        termsize::get().map(|x| x.cols as u32).unwrap_or(80)
     }
     fn flush(&mut self) -> LifeOrDeath {
         self.stdout.flush()?;
@@ -384,20 +376,17 @@ impl Term for Vt52 {
         let old_hook = panic::take_hook();
         let default_hook = panic::take_hook();
         panic::set_hook(Box::new(move |info| {
-            let mut stdout = std::io::stdout();
-            let _ = queue!(
-                stdout,
-                cursor::Show,
-                terminal::EnableLineWrap,
-                style::ResetColor,
-                style::SetAttribute(CtAttribute::Reset),
-                terminal::Clear(terminal::ClearType::FromCursorDown)
-            );
+            let mut stdout = std::io::stdout().lock();
+            // fgcolor=15, bgcolor=0, clear from cursor, wrap on, enable cursor
+            let _ = write!(stdout, "\x1Bb\x2F\x1Bc\x20\x1BJ\x1Bv\x1Be");
             let _ = stdout.flush();
-            let _ = terminal::disable_raw_mode();
+            drop(stdout);
+            crate::exit_raw_mode();
             default_hook(info)
         }));
-        terminal::enable_raw_mode()?;
+        // don't check success, we're unsuspending so there's no meaningful
+        // way to handle it
+        crate::enter_raw_mode();
         self.suspended = false;
         self.old_hook = Some(old_hook);
         Ok(())
@@ -413,7 +402,7 @@ impl Term for Vt52 {
         if let Some(old_hook) = self.old_hook.take() {
             panic::set_hook(old_hook);
         }
-        terminal::disable_raw_mode()?;
+        crate::exit_raw_mode();
         self.suspended = true;
         Ok(())
     }

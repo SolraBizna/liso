@@ -11,7 +11,6 @@ use std::{
     time::Instant,
 };
 
-use crossterm::tty::IsTty;
 use unicode_width::UnicodeWidthChar;
 
 /// This is the actual worker used when we're in "pipe mode". That means we
@@ -638,9 +637,8 @@ impl TtyState {
             Request::RawInput(input) => {
                 self.handle_input(tx, &input, ded_tx)?
             }
-            Request::CrosstermEvent(event) => {
-                self.handle_event(tx, event, ded_tx)?
-            }
+            Request::Char(char) => self.handle_char(tx, char, ded_tx)?,
+            Request::Key(code) => self.handle_key(tx, code, ded_tx)?,
             Request::Die => return Ok(()),
             Request::Heartbeat => {
                 if let Some((_, deadline)) = self.notice {
@@ -965,197 +963,110 @@ impl TtyState {
             return Ok(());
         }
         for ch in input.chars() {
-            #[cfg(feature = "completion")]
-            if ch == '\t' {
-                self.consecutive_completion_presses =
-                    self.consecutive_completion_presses.saturating_add(1);
-            } else {
-                self.consecutive_completion_presses = 0;
-            }
-            match ch {
-                // Control-A (go to beginning of line)
-                '\u{0001}' => self.handle_home()?,
-                // Control-B (backward one char)
-                '\u{0002}' => self.handle_left_arrow()?,
-                // Control-C
-                '\u{0003}' => tx.send(Response::Quit)?,
-                // Control-D
-                '\u{0004}' => self.handle_finish(tx)?,
-                // Control-E (go to end of line)
-                '\u{0005}' => self.handle_end()?,
-                // Control-F (forward one char)
-                '\u{0006}' => self.handle_right_arrow()?,
-                // Control-G (discard input)
-                '\u{0007}' => self.handle_discard(tx)?,
-                // Control-K (kill line after cursor)
-                '\u{000B}' => self.handle_kill_to_end()?,
-                // Control-L (clear screen)
-                '\u{000C}' => self.handle_clear()?,
-                // Control-N (history next)
-                #[cfg(feature = "history")]
-                '\u{000E}' => self.history_next()?,
-                // Control-P (history previous)
-                #[cfg(feature = "history")]
-                '\u{0010}' => self.history_prev()?,
-                // Control-T
-                '\u{0014}' => tx.send(Response::Info)?,
-                // Control-U (kill line before cursor)
-                '\u{0015}' => self.handle_kill_to_start()?,
-                // Control-W (erase word)
-                '\u{0017}' => self.handle_delete_word()?,
-                // Control-X
-                '\u{0018}' => tx.send(Response::Swap)?,
-                // Control-Y (yank)
-                '\u{0019}' => self.handle_yank()?,
-                #[cfg(unix)]
-                // Control-Z
-                '\u{001A}' => self.handle_suspend()?,
-                // Tab
-                '\t' => self.handle_completion()?,
-                // Escape
-                '\u{001B}' => {
-                    tx.send(Response::Escape)?;
-                }
-                // Break (control-backslash)
-                '\u{001C}' => {
-                    tx.send(Response::Break)?;
-                }
-                // Enter/return
-                '\n' | '\r' => self.handle_return(tx, ded_tx)?,
-                // Backspace
-                '\u{0008}' | '\u{007F}' => self.handle_delete_back()?,
-                // Unknown control character
-                '\u{0000}'..='\u{001F}' | '\u{0080}'..='\u{009F}' => {
-                    tx.send(Response::Unknown(ch as u8))?;
-                }
-                // Printable(?) text(??)
-                _ => self.handle_char_input(ch)?,
-            }
+            self.handle_char(tx, ch, ded_tx)?;
         }
         Ok(())
     }
-    fn handle_event(
+    fn handle_char(
         &mut self,
         tx: &mut tokio_mpsc::UnboundedSender<Response>,
-        event: Event,
+        ch: char,
         ded_tx: &mut std_mpsc::SyncSender<Instant>,
     ) -> LifeOrDeath {
         if !self.input_allowed {
             return Ok(());
         }
-        match event {
-            Event::Resize(..) => self.rollin()?,
-            Event::Mouse(..) => (),
-            Event::Key(k) => {
-                use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
-                if k.kind == KeyEventKind::Release {
-                    return Ok(());
-                }
-                if k.modifiers.contains(KeyModifiers::CONTROL) {
-                    #[cfg(feature = "completion")]
-                    if k.code == KeyCode::Char('i') {
-                        self.consecutive_completion_presses = self
-                            .consecutive_completion_presses
-                            .saturating_add(1);
-                    } else {
-                        self.consecutive_completion_presses = 0;
-                    }
-                    match k.code {
-                        // Control-A (go to beginning of line)
-                        KeyCode::Char('a') => self.handle_home()?,
-                        // Control-B (backward one char)
-                        KeyCode::Char('b') => self.handle_left_arrow()?,
-                        // Control-C
-                        KeyCode::Char('c') => tx.send(Response::Quit)?,
-                        // Control-D
-                        KeyCode::Char('d') => self.handle_finish(tx)?,
-                        // Control-E (go to end of line)
-                        KeyCode::Char('e') => self.handle_end()?,
-                        // Control-F (forward one char)
-                        KeyCode::Char('f') => self.handle_right_arrow()?,
-                        // Control-G (discard input)
-                        KeyCode::Char('g') => self.handle_discard(tx)?,
-                        // Control-K (kill line after cursor)
-                        KeyCode::Char('k') => self.handle_kill_to_end()?,
-                        // Control-L (clear screen)
-                        KeyCode::Char('l') => self.handle_clear()?,
-                        // Control-N (history next)
-                        #[cfg(feature = "history")]
-                        KeyCode::Char('n') => self.history_next()?,
-                        // Control-P (history previous)
-                        #[cfg(feature = "history")]
-                        KeyCode::Char('p') => self.history_prev()?,
-                        // Control-T
-                        KeyCode::Char('t') => tx.send(Response::Info)?,
-                        // Control-U (kill line before cursor)
-                        KeyCode::Char('u') => self.handle_kill_to_start()?,
-                        // Control-W (erase word)
-                        KeyCode::Char('w') => self.handle_delete_word()?,
-                        // Control-X
-                        KeyCode::Char('x') => tx.send(Response::Swap)?,
-                        // Control-Y (yank)
-                        KeyCode::Char('y') => self.handle_yank()?,
-                        #[cfg(unix)]
-                        // Control-Z
-                        KeyCode::Char('z') => self.handle_suspend()?,
-                        // Break (control-backslash)
-                        KeyCode::Char('\\') => {
-                            tx.send(Response::Break)?;
-                        }
-                        // Control-I (Tab)
-                        KeyCode::Char('i') => self.handle_completion()?,
-                        // Control-J/Control-M = return
-                        KeyCode::Char('j') | KeyCode::Char('m') => {
-                            self.handle_return(tx, ded_tx)?
-                        }
-                        // Unknown control character
-                        KeyCode::Char(x) => {
-                            if ('\u{0040}'..='\u{007e}').contains(&x) {
-                                tx.send(Response::Unknown((x as u8) & 0x1F))?;
-                            }
-                        }
-                        _ => (),
-                    }
-                } else {
-                    #[cfg(feature = "completion")]
-                    if k.code == KeyCode::Tab {
-                        self.consecutive_completion_presses = self
-                            .consecutive_completion_presses
-                            .saturating_add(1);
-                    } else {
-                        self.consecutive_completion_presses = 0;
-                    }
-                    match k.code {
-                        // Printable(?) text(??)
-                        KeyCode::Char(ch) => {
-                            if !ch.is_control()
-                                && ch != '\u{2028}'
-                                && ch != '\u{2029}'
-                            {
-                                self.handle_char_input(ch)?
-                            }
-                        }
-                        KeyCode::Tab => self.handle_completion()?,
-                        KeyCode::Esc => tx.send(Response::Escape)?,
-                        KeyCode::Enter => self.handle_return(tx, ded_tx)?,
-                        KeyCode::Backspace => self.handle_delete_back()?,
-                        KeyCode::Delete => self.handle_delete_fore()?,
-                        #[cfg(feature = "history")]
-                        KeyCode::Up => self.history_prev()?,
-                        #[cfg(feature = "history")]
-                        KeyCode::Down => self.history_next()?,
-                        KeyCode::Left => self.handle_left_arrow()?,
-                        KeyCode::Right => self.handle_right_arrow()?,
-                        KeyCode::Home => self.handle_home()?,
-                        KeyCode::End => self.handle_end()?,
-                        _ => (),
-                    }
-                }
+        #[cfg(feature = "completion")]
+        if ch == '\t' {
+            self.consecutive_completion_presses =
+                self.consecutive_completion_presses.saturating_add(1);
+        } else {
+            self.consecutive_completion_presses = 0;
+        }
+        match ch {
+            // Control-A (go to beginning of line)
+            '\u{0001}' => self.handle_home()?,
+            // Control-B (backward one char)
+            '\u{0002}' => self.handle_left_arrow()?,
+            // Control-C
+            '\u{0003}' => tx.send(Response::Quit)?,
+            // Control-D
+            '\u{0004}' => self.handle_finish(tx)?,
+            // Control-E (go to end of line)
+            '\u{0005}' => self.handle_end()?,
+            // Control-F (forward one char)
+            '\u{0006}' => self.handle_right_arrow()?,
+            // Control-G (discard input)
+            '\u{0007}' => self.handle_discard(tx)?,
+            // Control-K (kill line after cursor)
+            '\u{000B}' => self.handle_kill_to_end()?,
+            // Control-L (clear screen)
+            '\u{000C}' => self.handle_clear()?,
+            // Control-N (history next)
+            #[cfg(feature = "history")]
+            '\u{000E}' => self.history_next()?,
+            // Control-P (history previous)
+            #[cfg(feature = "history")]
+            '\u{0010}' => self.history_prev()?,
+            // Control-T
+            '\u{0014}' => tx.send(Response::Info)?,
+            // Control-U (kill line before cursor)
+            '\u{0015}' => self.handle_kill_to_start()?,
+            // Control-W (erase word)
+            '\u{0017}' => self.handle_delete_word()?,
+            // Control-X
+            '\u{0018}' => tx.send(Response::Swap)?,
+            // Control-Y (yank)
+            '\u{0019}' => self.handle_yank()?,
+            #[cfg(unix)]
+            // Control-Z
+            '\u{001A}' => self.handle_suspend()?,
+            // Tab
+            '\t' => self.handle_completion()?,
+            // Escape
+            '\u{001B}' => {
+                tx.send(Response::Escape)?;
             }
-            Event::FocusGained | Event::FocusLost => (),
-            Event::Paste(_) => {
-                unreachable!("we don't turn bracketed paste on so we should never get this event")
+            // Soft break (control-backslash)
+            '\u{001C}' => {
+                tx.send(Response::Break)?;
             }
+            // Enter/return
+            '\n' | '\r' => self.handle_return(tx, ded_tx)?,
+            // Backspace
+            '\u{0008}' | '\u{007F}' => self.handle_delete_back()?,
+            // Unknown control character
+            '\u{0000}'..='\u{001F}' | '\u{0080}'..='\u{009F}' => {
+                tx.send(Response::Unknown(ch as u8))?;
+            }
+            // Printable(?) text(??)
+            _ => self.handle_char_input(ch)?,
+        }
+        Ok(())
+    }
+    fn handle_key(
+        &mut self,
+        tx: &mut tokio_mpsc::UnboundedSender<Response>,
+        code: KeyCode,
+        ded_tx: &mut std_mpsc::SyncSender<Instant>,
+    ) -> LifeOrDeath {
+        if !self.input_allowed {
+            return Ok(());
+        }
+        self.consecutive_completion_presses = 0;
+        match code {
+            // Printable(?) text(??)
+            KeyCode::Backspace => self.handle_delete_back()?,
+            KeyCode::Delete => self.handle_delete_fore()?,
+            #[cfg(feature = "history")]
+            KeyCode::Up => self.history_prev()?,
+            #[cfg(feature = "history")]
+            KeyCode::Down => self.history_next()?,
+            KeyCode::Left => self.handle_left_arrow()?,
+            KeyCode::Right => self.handle_right_arrow()?,
+            KeyCode::Home => self.handle_home()?,
+            KeyCode::End => self.handle_end()?,
+            KeyCode::PageUp | KeyCode::PageDown => (), // TODO: handle?
         }
         Ok(())
     }
@@ -1244,7 +1155,7 @@ impl TtyState {
         std::println!("^Z");
         // Note: The stdin thread requires no special handling here, because
         // it will be suspended along with the rest of the process.
-        unix_util::sigstop_ourselves();
+        util::sigstop_ourselves();
         term.unsuspend()?;
         self.rollout_needed = true;
         Ok(())
@@ -1393,7 +1304,6 @@ fn tty_worker(
             }
         })
         .unwrap();
-    crossterm::terminal::enable_raw_mode()?;
     let term = new_term(&req_tx)?;
     let mut state = TtyState {
         status: None,
@@ -1451,7 +1361,6 @@ fn tty_worker(
     }
     state.rollin()?;
     state.cleanup()?;
-    crossterm::terminal::disable_raw_mode()?;
     drop(rx);
     Ok(())
 }
@@ -1466,7 +1375,7 @@ pub(crate) fn worker(
     tx: tokio_mpsc::UnboundedSender<Response>,
     #[cfg(feature = "history")] history: Arc<RwLock<History>>,
 ) -> LifeOrDeath {
-    if !(std::io::stdout().is_tty() && std::io::stdin().is_tty())
+    if !util::stdin_and_stdout_are_tty()
         || is_pipe_term(
             std::env::var("TERM").as_ref().ok().map(String::as_str),
         )

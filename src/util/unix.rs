@@ -1,5 +1,7 @@
 //! This module contains utilites required for proper functioning on UNIX.
 
+#[cfg(debug_assertions)]
+use std::sync::atomic::AtomicBool;
 use std::{
     os::{fd::AsRawFd, unix::thread::JoinHandleExt},
     thread::JoinHandle,
@@ -11,18 +13,29 @@ use nix::{
         signal::{
             raise, sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal,
         },
+        termios::{
+            cfmakeraw, tcgetattr, tcsetattr, SetArg::TCSAFLUSH, Termios,
+        },
     },
-    unistd::{close, dup, dup2, pipe},
+    unistd::{close, dup, dup2, isatty, pipe},
 };
 
-pub(crate) fn sigstop_ourselves() {
+#[cfg(debug_assertions)]
+use std::sync::atomic::Ordering;
+
+#[cfg(debug_assertions)]
+static IS_RAW: AtomicBool = AtomicBool::new(false);
+
+static mut OLD_TERMIOS: Termios = unsafe { std::mem::zeroed() };
+
+pub fn sigstop_ourselves() {
     let _ = raise(Signal::SIGSTOP);
 }
 
 /// Wraps a JoinHandle on a thread that will be reading from stdin. Creates a
 /// flimsy way for us to interrupt it, by taking away its stdin file descriptor
 /// and sending it a signal. Very icky.
-pub(crate) struct InterruptibleStdinThread {
+pub struct InterruptibleStdinThread {
     join_handle: Option<JoinHandle<()>>,
 }
 
@@ -80,4 +93,70 @@ impl InterruptibleStdinThread {
     pub fn placebo_check() {
         // do nothing, as we are not a placebo
     }
+}
+
+/// Puts the terminal into raw mode. We can assume we will not be called twice
+/// without raw mode being disabled in between. Return true if the input is a
+/// tty and raw input is possible.
+pub fn enter_raw_mode() -> bool {
+    if isatty(0) != Ok(true) || isatty(1) != Ok(true) {
+        return false;
+    }
+    #[cfg(debug_assertions)]
+    loop {
+        match IS_RAW.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed) {
+            Ok(_) => break,
+            Err(true) => panic!("BUG IN LISO: enter_raw_mode() called twice without exit_raw_mode() in between!"),
+            Err(false) => continue,
+        }
+    }
+    let stdin = std::io::stdin();
+    let Ok(mut termios) = tcgetattr(&stdin) else {
+        #[cfg(debug_assertions)]
+        IS_RAW.store(false, Ordering::Release);
+        return false;
+    };
+    unsafe {
+        OLD_TERMIOS = termios.clone();
+    }
+    // TODO: not necessarily portable, consider alternatives
+    cfmakeraw(&mut termios);
+    let Ok(_) = tcsetattr(&stdin, TCSAFLUSH, &termios) else {
+        #[cfg(debug_assertions)]
+        IS_RAW.store(false, Ordering::Release);
+        return false;
+    };
+    true
+}
+
+/// Restores the previous terminal mode, whatever that was. Guaranteed to only
+/// be called if enter_raw_mode() has previously succeeded.
+pub fn exit_raw_mode() {
+    #[cfg(debug_assertions)]
+    if !IS_RAW.load(Ordering::Relaxed) {
+        panic!("BUG IN LISO: exit_raw_mode() called without preceding enter_raw_mode()!")
+    }
+    // this can easily fail if the terminal has gone away, in which case,
+    // failure of this step is not harmful
+    #[allow(static_mut_refs)]
+    let _ = tcsetattr(std::io::stdin(), TCSAFLUSH, unsafe { &OLD_TERMIOS });
+    #[cfg(debug_assertions)]
+    loop {
+        match IS_RAW.compare_exchange(
+            true,
+            false,
+            Ordering::Acquire,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(false) => panic!(
+                "two threads raced to turn off raw mode, and we lost :("
+            ),
+            Err(true) => continue,
+        }
+    }
+}
+
+pub fn stdin_and_stdout_are_tty() -> bool {
+    isatty(0) == Ok(true) && isatty(1) == Ok(true)
 }
