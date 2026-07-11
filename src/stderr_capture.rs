@@ -6,7 +6,6 @@
 
 use std::thread::JoinHandle;
 
-use crossterm::tty::IsTty;
 use libc::c_int;
 use parking_lot::Mutex;
 
@@ -158,7 +157,8 @@ pub(crate) fn attempt_stderr_capture(output: crate::Output) {
             Some(_) => continue,
         }
     }
-    if !std::io::stderr().is_tty() {
+    // Don't try to capture stderr if it's already been redirected.
+    if unsafe { libc::isatty(2) } == 0 {
         return;
     }
     let (r, w) = match pipe() {
