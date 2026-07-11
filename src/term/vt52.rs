@@ -133,6 +133,9 @@ impl Vt52 {
                 let mut stdin = stdin.lock();
                 let mut buf = [0u8; 256];
                 loop {
+                    if crate::stdin_being_interrupted() {
+                        return;
+                    }
                     let amt = match stdin.read(&mut buf[..]) {
                         Err(x) if x.kind() == ErrorKind::Interrupted => {
                             continue

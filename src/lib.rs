@@ -159,7 +159,10 @@ pub use completion::*;
 #[cfg(feature = "capture-stderr")]
 mod stderr_capture;
 
-use util::{enter_raw_mode, exit_raw_mode, InterruptibleStdinThread};
+use util::{
+    enter_raw_mode, exit_raw_mode, stdin_being_interrupted,
+    InterruptibleStdinThread,
+};
 
 /// Internal use only: Representations for keyboard keys that are important to
 /// our operation but that don't produce text.

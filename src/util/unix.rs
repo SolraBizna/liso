@@ -160,3 +160,9 @@ pub fn exit_raw_mode() {
 pub fn stdin_and_stdout_are_tty() -> bool {
     isatty(0) == Ok(true) && isatty(1) == Ok(true)
 }
+
+pub fn stdin_being_interrupted() -> bool {
+    // We don't need this function in order to interrupt the stdin thread on
+    // UNIX.
+    false
+}

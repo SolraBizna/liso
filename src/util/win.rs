@@ -1,6 +1,9 @@
 //! This module contains utilities required for proper functioning on Windows.
 
-use std::thread::JoinHandle;
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    thread::JoinHandle,
+};
 
 use libc::isatty;
 use windows::{
@@ -15,15 +18,14 @@ use windows::{
             INPUT_RECORD, INPUT_RECORD_0, KEY_EVENT, KEY_EVENT_RECORD,
             KEY_EVENT_RECORD_0, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
         },
-        UI::Input::KeyboardAndMouse::VK_ESCAPE,
+        UI::Input::KeyboardAndMouse::VK_RETURN,
     },
 };
 
 #[cfg(debug_assertions)]
-use std::sync::atomic::{AtomicBool, Ordering};
-
-#[cfg(debug_assertions)]
 static IS_RAW: AtomicBool = AtomicBool::new(false);
+
+static STDIN_BEING_INTERRUPTED: AtomicBool = AtomicBool::new(false);
 
 /// Wraps a JoinHandle on a thread that will be reading from stdin. Creates a
 /// flimsy way for us to interrupt it, by taking away its stdin file descriptor
@@ -46,6 +48,7 @@ impl InterruptibleStdinThread {
             return;
         }
         unsafe {
+            STDIN_BEING_INTERRUPTED.store(true, Ordering::SeqCst);
             // We can't use the fd-0 switcheroo we use on UNIX to do this on
             // Windows, because Windows Rust uses NtReadFile to read the stdin
             // handle, not libc. Fortunately, we have the option to simulate
@@ -57,8 +60,8 @@ impl InterruptibleStdinThread {
                         KeyEvent: KEY_EVENT_RECORD {
                             bKeyDown: BOOL(1),
                             wRepeatCount: 1,
-                            wVirtualKeyCode: VK_ESCAPE.0,
-                            wVirtualScanCode: 0x1B,
+                            wVirtualKeyCode: VK_RETURN.0,
+                            wVirtualScanCode: 0x0A,
                             uChar: KEY_EVENT_RECORD_0 { UnicodeChar: 0x1B },
                             dwControlKeyState: 0,
                         },
@@ -70,8 +73,8 @@ impl InterruptibleStdinThread {
                         KeyEvent: KEY_EVENT_RECORD {
                             bKeyDown: BOOL(0),
                             wRepeatCount: 0,
-                            wVirtualKeyCode: VK_ESCAPE.0,
-                            wVirtualScanCode: 0x1B,
+                            wVirtualKeyCode: VK_RETURN.0,
+                            wVirtualScanCode: 0x0A,
                             uChar: KEY_EVENT_RECORD_0 { UnicodeChar: 0x1B },
                             dwControlKeyState: 0,
                         },
@@ -92,6 +95,8 @@ impl InterruptibleStdinThread {
                     std::thread::yield_now();
                 }
             }
+            join_handle.join().expect("unable to join stdin thread");
+            STDIN_BEING_INTERRUPTED.store(false, Ordering::SeqCst);
             // We can't be sure that Rust has consumed all the input. Or any of
             // it. Make sure none is left over for the next reader with one
             // last flush.
@@ -176,4 +181,8 @@ pub fn exit_raw_mode() {
 
 pub fn stdin_and_stdout_are_tty() -> bool {
     unsafe { isatty(0) != 0 && isatty(1) != 0 }
+}
+
+pub fn stdin_being_interrupted() -> bool {
+    STDIN_BEING_INTERRUPTED.load(Ordering::Relaxed)
 }
