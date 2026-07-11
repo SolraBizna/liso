@@ -140,7 +140,7 @@ use term::*;
 #[path = "util/unix.rs"]
 mod util;
 #[cfg(all(not(unix), windows))]
-#[path = "util/windows.rs"]
+#[path = "util/win.rs"]
 mod util;
 #[cfg(all(not(unix), not(windows)))]
 #[path = "util/dummy.rs"]
@@ -203,7 +203,7 @@ const ESCAPE_DELAY: Duration = Duration::new(0, 1000000000 / 24);
 /// abuse the `?` operator to make this quick and easy. Since we don't actually
 /// need any of the error information, we can condense it all down into this,
 /// the "an error happened and we don't care what" type.
-struct DummyError {}
+struct DummyError {} // TODO: use a fieldless struct for this struct with no fields
 type LifeOrDeath = std::result::Result<(), DummyError>;
 impl From<std::io::Error> for DummyError {
     fn from(_: std::io::Error) -> DummyError {
@@ -227,6 +227,12 @@ impl From<std_mpsc::RecvError> for DummyError {
 }
 impl From<std_mpsc::RecvTimeoutError> for DummyError {
     fn from(_: std_mpsc::RecvTimeoutError) -> DummyError {
+        DummyError {}
+    }
+}
+#[cfg(windows)]
+impl From<windows::core::Error> for DummyError {
+    fn from(_: windows::core::Error) -> DummyError {
         DummyError {}
     }
 }
@@ -367,9 +373,10 @@ bitflags! {
         const PLAIN = 0;
         /// Prints in a bolder font and/or a brighter color.
         const BOLD = 1 << 0;
-        /// Prints in a thinner font and/or a dimmer color.
+        /// Prints in a thinner font and/or a dimmer color. Frequently
+        /// unsupported. Notably not supported on Windows.
         const DIM = 1 << 1;
-        /// Prints with a line under the baseline.
+        /// Prints with a line under the baseline. Frequently unsupported.
         const UNDERLINE = 1 << 2;
         /// Prints with the foreground and background colors reversed. (Some
         /// terminals that don't support color *do* support this.)
@@ -387,7 +394,8 @@ bitflags! {
         /// latter might be confused for some kind of "mirrored video" feature.
         #[doc(alias="INVERSE")]
         const REVERSE = 1 << 3;
-        /// Prints in an italic font.
+        /// Prints in an italic font. Frequently unsupported. Notably not
+        /// supported on Windows.
         const ITALIC = 1 << 4;
     }
 }

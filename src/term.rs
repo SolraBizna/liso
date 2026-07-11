@@ -7,6 +7,11 @@ use ansi::AnsiTerminal;
 mod vt52;
 use vt52::Vt52;
 
+#[cfg(all(not(unix), windows))]
+mod win;
+#[cfg(all(not(unix), windows))]
+use win::WinTerminal;
+
 /// A wrapper for a particular terminal engine, supporting input and output.
 ///
 /// We always use `crossterm` for enabling/disabling raw mode and for detecting
@@ -89,5 +94,9 @@ pub(crate) fn new_term(
             _ => (), // fall through
         }
     }
-    Ok(Box::new(AnsiTerminal::new(req_tx.clone())?))
+    if cfg!(all(not(unix), windows)) {
+        Ok(Box::new(WinTerminal::new(req_tx.clone())?))
+    } else {
+        Ok(Box::new(AnsiTerminal::new(req_tx.clone())?))
+    }
 }
