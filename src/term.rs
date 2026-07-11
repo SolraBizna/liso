@@ -14,9 +14,7 @@ use win::WinTerminal;
 
 /// A wrapper for a particular terminal engine, supporting input and output.
 ///
-/// We always use `crossterm` for enabling/disabling raw mode and for detecting
-/// the size of the terminal, but if the TERM/TERMINFO environment variables
-/// are set appropriately, we might use one of the other variants.
+/// We decide which engine to use based on the environment.
 pub(crate) trait Term {
     /// Set the current attributes. (If possible, defer the actual control
     /// code outputting until the next time one of the `print_*` functions is
@@ -94,9 +92,9 @@ pub(crate) fn new_term(
             _ => (), // fall through
         }
     }
-    if cfg!(all(not(unix), windows)) {
-        Ok(Box::new(WinTerminal::new(req_tx.clone())?))
-    } else {
-        Ok(Box::new(AnsiTerminal::new(req_tx.clone())?))
+    #[cfg(all(not(unix), windows))]
+    if std::env::var("TERM").is_err() {
+        return Ok(Box::new(WinTerminal::new(req_tx.clone())?));
     }
+    Ok(Box::new(AnsiTerminal::new(req_tx.clone())?))
 }

@@ -469,7 +469,7 @@ impl Term for WinTerminal {
             crate::exit_raw_mode();
             default_hook(info)
         }));
-        crate::enter_raw_mode();
+        crate::enter_raw_mode(false);
         let _ = self.hide_cursor();
         self.suspended = false;
         self.old_hook = Some(old_hook);

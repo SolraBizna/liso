@@ -98,7 +98,7 @@ impl InterruptibleStdinThread {
 /// Puts the terminal into raw mode. We can assume we will not be called twice
 /// without raw mode being disabled in between. Return true if the input is a
 /// tty and raw input is possible.
-pub fn enter_raw_mode() -> bool {
+pub fn enter_raw_mode(_ansi: bool) -> bool {
     if isatty(0) != Ok(true) || isatty(1) != Ok(true) {
         return false;
     }

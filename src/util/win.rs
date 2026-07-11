@@ -1,18 +1,21 @@
 //! This module contains utilities required for proper functioning on Windows.
 
-use std::{os::windows::prelude::*, thread::JoinHandle};
+use std::thread::JoinHandle;
 
-use libc::{c_int, close, dup, dup2, isatty, pipe};
-use windows::Win32::{
-    Foundation::HANDLE,
-    System::{
-        Console::{
-            GetConsoleMode, GetStdHandle, SetConsoleMode, CONSOLE_MODE,
+use libc::isatty;
+use windows::{
+    core::BOOL,
+    Win32::{
+        System::Console::{
+            FlushConsoleInputBuffer, GetConsoleMode, GetStdHandle,
+            SetConsoleMode, WriteConsoleInputW, CONSOLE_MODE,
             ENABLE_LVB_GRID_WORLDWIDE, ENABLE_PROCESSED_OUTPUT,
-            ENABLE_QUICK_EDIT_MODE, ENABLE_WINDOW_INPUT, STD_INPUT_HANDLE,
-            STD_OUTPUT_HANDLE,
+            ENABLE_QUICK_EDIT_MODE, ENABLE_VIRTUAL_TERMINAL_INPUT,
+            ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
+            INPUT_RECORD, INPUT_RECORD_0, KEY_EVENT, KEY_EVENT_RECORD,
+            KEY_EVENT_RECORD_0, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
         },
-        Threading::{QueueUserAPC2, QUEUE_USER_APC_FLAGS_SPECIAL_USER_APC},
+        UI::Input::KeyboardAndMouse::VK_ESCAPE,
     },
 };
 
@@ -29,8 +32,6 @@ pub(crate) struct InterruptibleStdinThread {
     join_handle: Option<JoinHandle<()>>,
 }
 
-extern "system" fn dummy_handler(_: usize) {}
-
 impl InterruptibleStdinThread {
     pub fn new(join_handle: JoinHandle<()>) -> InterruptibleStdinThread {
         InterruptibleStdinThread {
@@ -44,49 +45,57 @@ impl InterruptibleStdinThread {
         if join_handle.is_finished() {
             return;
         }
-        // oh boy!
         unsafe {
-            let mut array: [c_int; 2] = [0; 2];
-            let ret = pipe(&mut array[0], 32, 0);
-            if ret != 0 {
-                panic!("unable to create a body double for stdin");
+            // We can't use the fd-0 switcheroo we use on UNIX to do this on
+            // Windows, because Windows Rust uses NtReadFile to read the stdin
+            // handle, not libc. Fortunately, we have the option to simulate
+            // input instead.
+            let buf = [
+                INPUT_RECORD {
+                    EventType: KEY_EVENT as u16,
+                    Event: INPUT_RECORD_0 {
+                        KeyEvent: KEY_EVENT_RECORD {
+                            bKeyDown: BOOL(1),
+                            wRepeatCount: 1,
+                            wVirtualKeyCode: VK_ESCAPE.0,
+                            wVirtualScanCode: 0x1B,
+                            uChar: KEY_EVENT_RECORD_0 { UnicodeChar: 0x1B },
+                            dwControlKeyState: 0,
+                        },
+                    },
+                },
+                INPUT_RECORD {
+                    EventType: KEY_EVENT as u16,
+                    Event: INPUT_RECORD_0 {
+                        KeyEvent: KEY_EVENT_RECORD {
+                            bKeyDown: BOOL(0),
+                            wRepeatCount: 0,
+                            wVirtualKeyCode: VK_ESCAPE.0,
+                            wVirtualScanCode: 0x1B,
+                            uChar: KEY_EVENT_RECORD_0 { UnicodeChar: 0x1B },
+                            dwControlKeyState: 0,
+                        },
+                    },
+                },
+            ];
+            let Ok(stdin_handle) = GetStdHandle(STD_INPUT_HANDLE) else {
+                return;
+            };
+            loop {
+                // This loop SHOULD eventually terminate...
+                let _ = FlushConsoleInputBuffer(stdin_handle);
+                let mut wrote = 0;
+                let _ = WriteConsoleInputW(stdin_handle, &buf, &raw mut wrote);
+                if wrote == 2 {
+                    break;
+                } else {
+                    std::thread::yield_now();
+                }
             }
-            let [rx, tx] = array;
-            close(tx); // close the write side
-            let hidden_stdin = dup(0);
-            if hidden_stdin < 0 {
-                panic!("unable to put stdin into witness relocation");
-            }
-            let replaced_stdin = dup2(rx, 0);
-            if replaced_stdin < 0 {
-                panic!("unable to replace stdin with a body double");
-            }
-            assert_eq!(
-                replaced_stdin, 0,
-                "attempt to replace stdin with a body double failed \
-                despite appearing to succeed"
-            );
-            if (!QueueUserAPC2(
-                Some(dummy_handler),
-                HANDLE(join_handle.as_raw_handle()),
-                0,
-                QUEUE_USER_APC_FLAGS_SPECIAL_USER_APC,
-            ))
-            .into()
-            {
-                panic!("stdin thread did not take the bait");
-            }
-            join_handle.join().expect("unable to join stdin thread");
-            let new_stdin = dup2(hidden_stdin, 0);
-            if new_stdin < 0 {
-                panic!("unable to restore stdin");
-            }
-            assert_eq!(
-                new_stdin, 0,
-                "attempt to restore stdin failed despite appearing to succeed"
-            );
-            close(hidden_stdin);
-            close(rx);
+            // We can't be sure that Rust has consumed all the input. Or any of
+            // it. Make sure none is left over for the next reader with one
+            // last flush.
+            let _ = FlushConsoleInputBuffer(stdin_handle);
         }
     }
     pub fn placebo_check() {
@@ -100,7 +109,7 @@ static mut OLD_STDOUT_MODE: CONSOLE_MODE = CONSOLE_MODE(0);
 /// Puts the terminal into raw mode. We can assume we will not be called twice
 /// without raw mode being disabled in between. Return true if the input is a
 /// tty and raw input is possible.
-pub fn enter_raw_mode() -> bool {
+pub fn enter_raw_mode(ansi: bool) -> bool {
     unsafe {
         let Ok(stdin_handle) = GetStdHandle(STD_INPUT_HANDLE) else {
             return false;
@@ -128,18 +137,20 @@ pub fn enter_raw_mode() -> bool {
             IS_RAW.store(false, Ordering::Release);
             return false;
         };
-        let Ok(_) = SetConsoleMode(
-            stdin_handle,
-            ENABLE_QUICK_EDIT_MODE | ENABLE_WINDOW_INPUT,
-        ) else {
+        let mut in_mode = ENABLE_QUICK_EDIT_MODE | ENABLE_WINDOW_INPUT;
+        if ansi {
+            in_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+        }
+        let mut out_mode = ENABLE_PROCESSED_OUTPUT | ENABLE_LVB_GRID_WORLDWIDE;
+        if ansi {
+            out_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        }
+        let Ok(_) = SetConsoleMode(stdin_handle, in_mode) else {
             #[cfg(debug_assertions)]
             IS_RAW.store(false, Ordering::Release);
             return false;
         };
-        let Ok(_) = SetConsoleMode(
-            stdout_handle,
-            ENABLE_PROCESSED_OUTPUT | ENABLE_LVB_GRID_WORLDWIDE,
-        ) else {
+        let Ok(_) = SetConsoleMode(stdout_handle, out_mode) else {
             panic!("we were able to set the console input mode, but not the console output mode");
         };
         true

@@ -387,7 +387,7 @@ impl Term for AnsiTerminal {
             default_hook(info)
         }));
         // don't bother checking failure?
-        crate::enter_raw_mode();
+        crate::enter_raw_mode(true);
         self.suspended = false;
         self.old_hook = Some(old_hook);
         Ok(())

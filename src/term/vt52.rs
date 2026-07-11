@@ -386,7 +386,7 @@ impl Term for Vt52 {
         }));
         // don't check success, we're unsuspending so there's no meaningful
         // way to handle it
-        crate::enter_raw_mode();
+        crate::enter_raw_mode(false);
         self.suspended = false;
         self.old_hook = Some(old_hook);
         Ok(())
