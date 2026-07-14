@@ -15,9 +15,16 @@ Main features:
 
 Supported platforms:
 
-- Windows 7 or later (completely untested)
-- Any OS with an ANSI-compliant terminal (if you don't know if your terminal is ANSI-compliant, it is)
-- Any OS with a [VT52](#vt52-support)-compatible terminal
+- 32- and 64-bit Windows
+- UNIX-like (Linux, macOS, BSD...)
+
+(Other platforms are supported, but you will not be able to suspend Liso, or close and then open it again in the same process.)
+
+Supported terminals:
+
+- Any ANSI-compliant terminal (if you don't know if your terminal is ANSI-compliant, it is)
+- [VT52](#vt52-support)-compatible terminal (tested with Atari ST in VT52 mode)
+- Windows console
 
 See [the crate documentation](https://docs.rs/liso/latest/liso/) for more information, or [the examples](https://github.com/SolraBizna/liso/tree/main/examples) for complete example programs.
 
@@ -61,8 +68,6 @@ If the `TERM` environment variable exists, and the base type (to the left of the
 Input and output work. Special characters other than control keys don't work, I will need to do more testing to understand why. Testing Liso against Atari's VT52 emulator was extremely helpful in optimizing the redrawing routine, and teasing out some edge cases in the style handling.
 
 # Help Wanted
-
-I don't have a Windows machine in any real sense, so I can't test whether this crate functions on Windows. It *should*, since it uses Crossterm, but I would appreciate reports from Windows users and/or developers.
 
 I have no idea how well Liso works for visually-impaired users. If you use command line applications with a screen reader or a Braille terminal, I would greatly appreciate it if you got in touch with me. I would love to learn more about how I can improve your experience with Liso-based programs.
 

@@ -5,7 +5,6 @@ use std::{
     panic,
 };
 
-use std::result::Result; // override crossterm::Result
 use unicode_width::UnicodeWidthChar;
 
 /// Talks to a VT52, or (way more likely) an Atari ST (or descendant) emulating

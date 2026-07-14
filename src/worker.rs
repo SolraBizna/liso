@@ -1263,7 +1263,7 @@ impl TtyState {
 }
 
 /// This is the actual worker function we use when we're in "tty mode", that
-/// is, we believe we have a terminal crossterm supports and NO PIPES.
+/// is, we believe we have a real terminal and NO PIPES.
 fn tty_worker(
     req_tx: std_mpsc::Sender<Request>,
     rx: std_mpsc::Receiver<Request>,
