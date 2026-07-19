@@ -1,7 +1,11 @@
 //! This module contains utilities required for proper functioning on Windows.
 
 use std::{
-    sync::atomic::{AtomicBool, Ordering},
+    mem::zeroed,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        LazyLock,
+    },
     thread::JoinHandle,
 };
 
@@ -10,13 +14,16 @@ use windows::{
     core::BOOL,
     Win32::{
         System::Console::{
-            FlushConsoleInputBuffer, GetConsoleMode, GetStdHandle,
-            SetConsoleMode, WriteConsoleInputW, CONSOLE_MODE,
+            FlushConsoleInputBuffer, GetConsoleMode,
+            GetConsoleScreenBufferInfo, GetStdHandle, SetConsoleMode,
+            WriteConsoleInputW, BACKGROUND_BLUE, BACKGROUND_GREEN,
+            BACKGROUND_RED, CONSOLE_CHARACTER_ATTRIBUTES, CONSOLE_MODE,
             ENABLE_LVB_GRID_WORLDWIDE, ENABLE_PROCESSED_OUTPUT,
             ENABLE_QUICK_EDIT_MODE, ENABLE_VIRTUAL_TERMINAL_INPUT,
             ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
-            INPUT_RECORD, INPUT_RECORD_0, KEY_EVENT, KEY_EVENT_RECORD,
-            KEY_EVENT_RECORD_0, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+            FOREGROUND_BLUE, FOREGROUND_GREEN, FOREGROUND_RED, INPUT_RECORD,
+            INPUT_RECORD_0, KEY_EVENT, KEY_EVENT_RECORD, KEY_EVENT_RECORD_0,
+            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
         },
         UI::Input::KeyboardAndMouse::VK_RETURN,
     },
@@ -186,3 +193,48 @@ pub fn stdin_and_stdout_are_tty() -> bool {
 pub fn stdin_being_interrupted() -> bool {
     STDIN_BEING_INTERRUPTED.load(Ordering::Relaxed)
 }
+
+pub struct WindowsInfo {
+    pub ansi_support: bool,
+    pub default_fg: CONSOLE_CHARACTER_ATTRIBUTES,
+    pub default_bg: CONSOLE_CHARACTER_ATTRIBUTES,
+}
+
+fn get_windows_info() -> Result<WindowsInfo, crate::DummyError> {
+    unsafe {
+        let stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE)?;
+        let mut ansi_support = false;
+        if std::env::var("LISO_FORCE_WINDOWS_CONSOLE").is_err() {
+            let mut mode = zeroed();
+            GetConsoleMode(stdout_handle, &raw mut mode)?;
+            ansi_support = mode.contains(ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            if !ansi_support {
+                // maybe it has ANSI support that wasn't already enabled?
+                let test_mode = mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+                if SetConsoleMode(stdout_handle, test_mode).is_ok() {
+                    SetConsoleMode(stdout_handle, mode).unwrap();
+                    ansi_support = true;
+                }
+            }
+        }
+        let mut csbi = zeroed();
+        GetConsoleScreenBufferInfo(stdout_handle, &raw mut csbi)?;
+        let default_fg = csbi.wAttributes
+            & (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+        let default_bg = csbi.wAttributes
+            & (BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE);
+        Ok(WindowsInfo {
+            ansi_support,
+            default_fg,
+            default_bg,
+        })
+    }
+}
+
+pub static WINDOWS_INFO: LazyLock<WindowsInfo> = LazyLock::new(|| {
+    get_windows_info().unwrap_or_else(|_| WindowsInfo {
+        ansi_support: false,
+        default_fg: FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE,
+        default_bg: CONSOLE_CHARACTER_ATTRIBUTES(0),
+    })
+});

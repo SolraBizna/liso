@@ -27,6 +27,8 @@ use windows::{
     },
 };
 
+use crate::util::WINDOWS_INFO;
+
 use super::*;
 
 use std::{mem::zeroed, panic};
@@ -234,8 +236,7 @@ impl Term for WinTerminal {
         fg: Option<Color>,
         bg: Option<Color>,
     ) -> LifeOrDeath {
-        let fg = fg.unwrap_or(Color::White);
-        let bg = bg.unwrap_or(Color::Black);
+        let windows_info = &*WINDOWS_INFO;
         let (fg, bg) = if style.contains(Style::INVERSE) {
             (bg, fg)
         } else {
@@ -243,27 +244,41 @@ impl Term for WinTerminal {
         };
         let mut attributes = CONSOLE_CHARACTER_ATTRIBUTES(0);
         match fg {
-            Color::Black => (),
-            Color::Red => attributes |= FOREGROUND_RED,
-            Color::Green => attributes |= FOREGROUND_GREEN,
-            Color::Blue => attributes |= FOREGROUND_BLUE,
-            Color::Cyan => attributes |= FOREGROUND_GREEN | FOREGROUND_BLUE,
-            Color::Magenta => attributes |= FOREGROUND_RED | FOREGROUND_BLUE,
-            Color::Yellow => attributes |= FOREGROUND_GREEN | FOREGROUND_BLUE,
-            Color::White => {
+            None => attributes |= windows_info.default_fg,
+            Some(Color::Black) => (),
+            Some(Color::Red) => attributes |= FOREGROUND_RED,
+            Some(Color::Green) => attributes |= FOREGROUND_GREEN,
+            Some(Color::Blue) => attributes |= FOREGROUND_BLUE,
+            Some(Color::Cyan) => {
+                attributes |= FOREGROUND_GREEN | FOREGROUND_BLUE
+            }
+            Some(Color::Magenta) => {
+                attributes |= FOREGROUND_RED | FOREGROUND_BLUE
+            }
+            Some(Color::Yellow) => {
+                attributes |= FOREGROUND_GREEN | FOREGROUND_BLUE
+            }
+            Some(Color::White) => {
                 attributes |=
                     FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE
             }
         };
         match bg {
-            Color::Black => (),
-            Color::Red => attributes |= BACKGROUND_RED,
-            Color::Green => attributes |= BACKGROUND_GREEN,
-            Color::Blue => attributes |= BACKGROUND_BLUE,
-            Color::Cyan => attributes |= BACKGROUND_GREEN | BACKGROUND_BLUE,
-            Color::Magenta => attributes |= BACKGROUND_RED | BACKGROUND_BLUE,
-            Color::Yellow => attributes |= BACKGROUND_GREEN | BACKGROUND_BLUE,
-            Color::White => {
+            None => attributes |= windows_info.default_bg,
+            Some(Color::Black) => (),
+            Some(Color::Red) => attributes |= BACKGROUND_RED,
+            Some(Color::Green) => attributes |= BACKGROUND_GREEN,
+            Some(Color::Blue) => attributes |= BACKGROUND_BLUE,
+            Some(Color::Cyan) => {
+                attributes |= BACKGROUND_GREEN | BACKGROUND_BLUE
+            }
+            Some(Color::Magenta) => {
+                attributes |= BACKGROUND_RED | BACKGROUND_BLUE
+            }
+            Some(Color::Yellow) => {
+                attributes |= BACKGROUND_GREEN | BACKGROUND_BLUE
+            }
+            Some(Color::White) => {
                 attributes |=
                     BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE
             }

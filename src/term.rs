@@ -93,7 +93,7 @@ pub(crate) fn new_term(
         }
     }
     #[cfg(all(not(unix), windows))]
-    if std::env::var("TERM").is_err() {
+    if !crate::util::WINDOWS_INFO.ansi_support {
         return Ok(Box::new(WinTerminal::new(req_tx.clone())?));
     }
     Ok(Box::new(AnsiTerminal::new(req_tx.clone())?))

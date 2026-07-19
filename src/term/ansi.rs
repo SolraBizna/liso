@@ -399,11 +399,11 @@ impl Term for AnsiTerminal {
         assert!(!self.suspended);
         // show cursor, enable line wrap, reset style, clear forward
         self.stdout.write_all(b"\x1B[25l\x1B[7h\x1B[0m\x1B[J")?;
+        self.stdout.flush()?;
         crate::exit_raw_mode();
         self.cur_style = Style::PLAIN;
         self.cur_fg = None;
         self.cur_bg = None;
-        self.stdout.flush()?;
         if let Some(old_hook) = self.old_hook.take() {
             panic::set_hook(old_hook);
         }
