@@ -1,0 +1,8 @@
+[package]
+name = "style-test"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.6.2", features = ["derive", "wrap_help"] }
+liso = { path = "../.." }

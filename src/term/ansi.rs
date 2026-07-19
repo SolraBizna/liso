@@ -258,7 +258,7 @@ impl Term for AnsiTerminal {
             piecemeal_gubbins.push(fg.map(|x| x.as_ansi_fg()).unwrap_or("39"));
         }
         if bg != self.cur_bg {
-            piecemeal_gubbins.push(fg.map(|x| x.as_ansi_bg()).unwrap_or("49"));
+            piecemeal_gubbins.push(bg.map(|x| x.as_ansi_bg()).unwrap_or("49"));
         }
         let piecemeal = gubbins_to_sequence(&piecemeal_gubbins);
         let mut flockmeal_gubbins = Vec::with_capacity(8);
