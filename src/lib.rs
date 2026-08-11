@@ -286,10 +286,10 @@ pub enum Color {
     Yellow = 3,
     /// The color of a calm ocean.
     Blue = 4,
-    /// The color of a clear sky.
-    Cyan = 5,
     /// A color that occurs rarely in nature, but often in screenshots of GEM.
-    Magenta = 6,
+    Magenta = 5,
+    /// The color of a clear sky.
+    Cyan = 6,
     /// A (roughly) equal mix of all wavelengths of light.
     White = 7,
 }
@@ -303,8 +303,8 @@ impl Color {
             Color::Green => "32",
             Color::Yellow => "33",
             Color::Blue => "34",
-            Color::Cyan => "35",
-            Color::Magenta => "36",
+            Color::Magenta => "35",
+            Color::Cyan => "36",
             Color::White => "37",
         }
     }
@@ -316,8 +316,8 @@ impl Color {
             Color::Green => "42",
             Color::Yellow => "43",
             Color::Blue => "44",
-            Color::Cyan => "45",
-            Color::Magenta => "46",
+            Color::Magenta => "45",
+            Color::Cyan => "46",
             Color::White => "47",
         }
     }
