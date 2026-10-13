@@ -1,7 +1,6 @@
 //! This module contains utilites required for proper functioning on UNIX.
 
-#[cfg(debug_assertions)]
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     os::{fd::AsRawFd, unix::thread::JoinHandleExt},
     thread::JoinHandle,
@@ -20,10 +19,6 @@ use nix::{
     unistd::{close, dup, dup2, isatty, pipe},
 };
 
-#[cfg(debug_assertions)]
-use std::sync::atomic::Ordering;
-
-#[cfg(debug_assertions)]
 static IS_RAW: AtomicBool = AtomicBool::new(false);
 
 static mut OLD_TERMIOS: Termios = unsafe { std::mem::zeroed() };
@@ -102,7 +97,6 @@ pub fn enter_raw_mode(_ansi: bool) -> bool {
     if isatty(0) != Ok(true) || isatty(1) != Ok(true) {
         return false;
     }
-    #[cfg(debug_assertions)]
     loop {
         match IS_RAW.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed) {
             Ok(_) => break,
@@ -112,7 +106,6 @@ pub fn enter_raw_mode(_ansi: bool) -> bool {
     }
     let stdin = std::io::stdin();
     let Ok(mut termios) = tcgetattr(&stdin) else {
-        #[cfg(debug_assertions)]
         IS_RAW.store(false, Ordering::Release);
         return false;
     };
@@ -122,7 +115,6 @@ pub fn enter_raw_mode(_ansi: bool) -> bool {
     // TODO: not necessarily portable, consider alternatives
     cfmakeraw(&mut termios);
     let Ok(_) = tcsetattr(&stdin, TCSAFLUSH, &termios) else {
-        #[cfg(debug_assertions)]
         IS_RAW.store(false, Ordering::Release);
         return false;
     };
@@ -130,17 +122,16 @@ pub fn enter_raw_mode(_ansi: bool) -> bool {
 }
 
 /// Restores the previous terminal mode, whatever that was. Guaranteed to only
-/// be called if enter_raw_mode() has previously succeeded.
+/// be called if enter_raw_mode() has previously succeeded. Might be called
+/// twice if we panic.
 pub fn exit_raw_mode() {
-    #[cfg(debug_assertions)]
     if !IS_RAW.load(Ordering::Relaxed) {
-        panic!("BUG IN LISO: exit_raw_mode() called without preceding enter_raw_mode()!")
+        return;
     }
     // this can easily fail if the terminal has gone away, in which case,
     // failure of this step is not harmful
     #[allow(static_mut_refs)]
     let _ = tcsetattr(std::io::stdin(), TCSAFLUSH, unsafe { &OLD_TERMIOS });
-    #[cfg(debug_assertions)]
     loop {
         match IS_RAW.compare_exchange(
             true,

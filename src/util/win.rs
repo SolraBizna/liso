@@ -29,7 +29,6 @@ use windows::{
     },
 };
 
-#[cfg(debug_assertions)]
 static IS_RAW: AtomicBool = AtomicBool::new(false);
 
 static STDIN_BEING_INTERRUPTED: AtomicBool = AtomicBool::new(false);
@@ -129,7 +128,6 @@ pub fn enter_raw_mode(ansi: bool) -> bool {
         let Ok(stdout_handle) = GetStdHandle(STD_OUTPUT_HANDLE) else {
             return false;
         };
-        #[cfg(debug_assertions)]
         loop {
             match IS_RAW.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed) {
                 Ok(_) => break,
@@ -139,13 +137,11 @@ pub fn enter_raw_mode(ansi: bool) -> bool {
         }
         let Ok(_) = GetConsoleMode(stdin_handle, &raw mut OLD_STDIN_MODE)
         else {
-            #[cfg(debug_assertions)]
             IS_RAW.store(false, Ordering::Release);
             return false;
         };
         let Ok(_) = GetConsoleMode(stdout_handle, &raw mut OLD_STDOUT_MODE)
         else {
-            #[cfg(debug_assertions)]
             IS_RAW.store(false, Ordering::Release);
             return false;
         };
@@ -158,7 +154,6 @@ pub fn enter_raw_mode(ansi: bool) -> bool {
             out_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
         }
         let Ok(_) = SetConsoleMode(stdin_handle, in_mode) else {
-            #[cfg(debug_assertions)]
             IS_RAW.store(false, Ordering::Release);
             return false;
         };
@@ -170,11 +165,11 @@ pub fn enter_raw_mode(ansi: bool) -> bool {
 }
 
 /// Restores the previous terminal mode, whatever that was. Guaranteed to only
-/// be called if enter_raw_mode() has previously succeeded.
+/// be called if enter_raw_mode() has previously succeeded. Might be called
+/// twice if we panic.
 pub fn exit_raw_mode() {
-    #[cfg(debug_assertions)]
     if !IS_RAW.load(Ordering::Relaxed) {
-        panic!("BUG IN LISO: exit_raw_mode() called without preceding enter_raw_mode()!")
+        return;
     } else {
         IS_RAW.store(false, Ordering::Release);
     }
