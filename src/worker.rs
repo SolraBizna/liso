@@ -29,6 +29,7 @@ fn pipe_worker(
                 loop {
                     let mut buf = String::new();
                     match stdin.read_line(&mut buf) {
+                        Ok(0) | Err(_) => break,
                         Ok(_) => {
                             while buf.ends_with('\n') || buf.ends_with('\r') {
                                 buf.pop();
@@ -37,7 +38,6 @@ fn pipe_worker(
                                 break;
                             }
                         }
-                        Err(_) => break,
                     }
                 }
             })
